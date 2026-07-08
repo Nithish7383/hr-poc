@@ -51,15 +51,6 @@ export default function DirectoryPage() {
     return true;
   });
 
-  // Rough progress proxy until a real completion-percentage field exists --
-  // based on status, since tracker-step-count would need a per-employee join.
-  function progressPct(status: string) {
-    if (status === "registered") return 10;
-    if (status === "onboarding") return 60;
-    if (status === "offboarding") return 60;
-    return 100;
-  }
-
   const selectStyle = { padding: 6, fontSize: 13 };
   const inputStyle = { padding: 6, fontSize: 13, width: 140 };
 
@@ -111,7 +102,7 @@ export default function DirectoryPage() {
                 <td>{e.role || "—"}</td>
                 <td>{e.manager || "—"}</td>
                 <td>{e.status}</td>
-                <td>{progressPct(e.status)}%</td>
+                <td>{e.completion_pct}%</td>
                 <td>
                   <button onClick={() => router.push(`/profile/${e.id}`)}>View</button>
                 </td>

@@ -1,0 +1,13 @@
+{
+  "Attorney": {"legal_access": true, "financial_access": false, "client_data_access": true},
+  "Partner": {"legal_access": true, "financial_access": false, "client_data_access": true},
+  "Paralegal": {"legal_access": true, "financial_access": false, "client_data_access": false},
+  "Legal Secretary": {"legal_access": false, "financial_access": false, "client_data_access": false},
+  "HR": {"legal_access": false, "financial_access": false, "client_data_access": true},
+  "Finance": {"legal_access": false, "financial_access": true, "client_data_access": false},
+  "IT Administrator": {"legal_access": false, "financial_access": false, "client_data_access": false},
+  "Help Desk": {"legal_access": false, "financial_access": false, "client_data_access": false},
+  "Compliance Officer": {"legal_access": false, "financial_access": false, "client_data_access": true},
+  "Marketing": {"legal_access": false, "financial_access": false, "client_data_access": false},
+  "Receptionist": {"legal_access": false, "financial_access": false, "client_data_access": false}
+}

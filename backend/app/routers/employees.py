@@ -3,13 +3,23 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Employee
 from app.schemas.employee import EmployeeCreate, EmployeeOut
+from app.services.progress import get_onboarding_completion_pct
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
 
-@router.get("", response_model=list[EmployeeOut])
+@router.get("")
 def list_employees(db: Session = Depends(get_db)):
-    return db.query(Employee).all()
+    """
+    Note: no response_model here (unlike the other routes below) because
+    we're adding completion_pct on top of EmployeeOut's fields -- a
+    response_model would silently strip it back out.
+    """
+    employees = db.query(Employee).all()
+    return [
+        {**EmployeeOut.model_validate(e).model_dump(), "completion_pct": get_onboarding_completion_pct(db, e.id)}
+        for e in employees
+    ]
 
 
 @router.get("/{employee_id}", response_model=EmployeeOut)

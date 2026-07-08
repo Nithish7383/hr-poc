@@ -32,3 +32,7 @@ def get_asset_templates():
 
 def get_compliance_templates():
     return _load("compliance_templates.json")
+
+
+def get_risk_factors():
+    return _load("risk_factors.json")

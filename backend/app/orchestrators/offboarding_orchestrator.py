@@ -4,6 +4,11 @@ same tracker-row-per-step pattern, same audit logging pattern.
 
 Step order: Exit Request -> Access Discovery -> Risk Assessment ->
 Deprovisioning Plan -> Asset Recovery -> Exit Compliance.
+
+APPROVER_ROLES and DEPROVISION_ACTIONS come from app.constants (shared with
+onboarding_orchestrator.py, no longer duplicated). Risk factor role-mapping
+comes from config_data/risk_factors.json (no longer hardcoded role sets
+inline) -- same pattern as every other config-driven agent.
 """
 import json
 from sqlalchemy.orm import Session
@@ -12,9 +17,8 @@ from app.models import (
     AssetAllocation, RiskAssessment, ComplianceTask, Approval, AuditLog,
 )
 from app.agents.risk_assessor import assess_risk
-
-APPROVER_ROLES = ["HR", "Manager", "IT", "Security"]
-DEPROVISION_ACTIONS = ["Disable User", "Remove Groups", "Remove Applications", "Remove VPN", "Archive Files"]
+from app.constants import APPROVER_ROLES, DEPROVISION_ACTIONS
+from app.config import get_risk_factors
 
 
 def _mark(db: Session, employee_id: str, step: str, status: str):
@@ -53,9 +57,13 @@ def run_offboarding(db: Session, employee_id: str, last_working_day: str = None,
         .first()
     )
     has_admin_rights = access_record is not None and "Admin Groups" in (access_record.security_groups or "")
-    has_legal_access = employee.role in {"Attorney", "Partner", "Paralegal"}
-    has_financial_access = employee.role == "Finance"
-    has_client_data_access = employee.role in {"Attorney", "Partner", "HR"}
+
+    risk_factors_config = get_risk_factors()
+    role_factors = risk_factors_config.get(employee.role, {})
+    has_legal_access = role_factors.get("legal_access", False)
+    has_financial_access = role_factors.get("financial_access", False)
+    has_client_data_access = role_factors.get("client_data_access", False)
+
     _mark(db, employee_id, "Access Discovery", "completed")
     _audit(db, employee_id, "Access Discovery", "Access inventory captured")
 

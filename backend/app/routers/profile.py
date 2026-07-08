@@ -1,6 +1,11 @@
 """
 Aggregates everything needed for the Employee Profile screen into one call --
 personal info, employment details, real completion %, timeline, recent activity.
+
+Completion % now comes from app.services.progress (shared with the
+Employee Directory listing) instead of a locally hardcoded step count --
+this is the fix for Directory and Profile showing different numbers
+for the same employee.
 """
 import json
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,10 +15,9 @@ from app.models import (
     Employee, OnboardingTracker, OffboardingTracker, AccessRecommendation,
     AssetAllocation, ComplianceTask, Approval, AuditLog,
 )
+from app.services.progress import get_onboarding_completion_pct
 
 router = APIRouter(prefix="/employees", tags=["profile"])
-
-ONBOARDING_STEP_COUNT = 8  # matches STEPS list in onboarding_orchestrator.py
 
 
 @router.get("/{employee_id}/profile")
@@ -35,8 +39,7 @@ def get_profile(employee_id: str, db: Session = Depends(get_db)):
         .all()
     )
 
-    completed_onboarding_steps = len({s.step for s in onboarding_steps if s.status == "completed"})
-    completion_pct = round((completed_onboarding_steps / ONBOARDING_STEP_COUNT) * 100) if onboarding_steps else 0
+    completion_pct = get_onboarding_completion_pct(db, employee_id)
 
     timeline = [
         {"step": s.step, "status": s.status, "timestamp": s.timestamp, "flow": "onboarding"}
