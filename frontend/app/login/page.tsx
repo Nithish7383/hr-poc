@@ -10,7 +10,7 @@ import { useAuth } from "../../lib/useAuth";
 // Lifecycle motif
 // ==========================
 
-const STAGES = ["Hire", "Grow", "Retain", "Offboard"];
+const STAGES = ["Onboarding","Offboarding"];
 
 function LifecycleStack() {
   return (
@@ -84,7 +84,7 @@ export default function LoginPage() {
 
       setToken(result.access_token, result.role);
 
-      router.push("/directory");
+      router.push("/dashboard");
     } catch (e) {
       // setError("Login failed -- check credentials");
 
