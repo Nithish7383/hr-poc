@@ -11,6 +11,7 @@ comes from config_data/risk_factors.json (no longer hardcoded role sets
 inline) -- same pattern as every other config-driven agent.
 """
 import json
+import datetime
 from sqlalchemy.orm import Session
 from app.models import (
     Employee, OffboardingTracker, ExitRequest, AccessRecommendation,
@@ -85,6 +86,7 @@ def run_offboarding(db: Session, employee_id: str, last_working_day: str = None,
     _mark(db, employee_id, "Asset Recovery", "running")
     if asset_record:
         asset_record.status = "pending_return"
+        asset_record.pending_return_at = datetime.datetime.utcnow()
         db.commit()
     _mark(db, employee_id, "Asset Recovery", "completed")
 

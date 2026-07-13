@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import datetime
 from app.database import get_db
 from app.models import OnboardingTracker, Employee, EmployeeDocument, OnboardingTask
-from app.schemas.employee import TaskDecision
+from app.schemas.employee import TaskDecision, TaskSelectionUpdate
 from app.orchestrators.onboarding_orchestrator import run_onboarding, resume_after_documents
 from app.services.track_status import get_all_track_statuses, recompute_employee_status
 
@@ -65,7 +65,12 @@ def get_tasks(employee_id: str, db: Session = Depends(get_db)):
     """Tasks grouped by track, PLUS each track's live-computed status --
     the single source of truth both the read-only Tracker and the
     Approval Dashboard read from. Track status is never stored, always
-    computed fresh from task state (see services/track_status.py)."""
+    computed fresh from task state (see services/track_status.py).
+
+    options/selected_options are parsed from JSON here so the frontend
+    gets real arrays, not JSON strings -- multi_select/single_select
+    tasks only, null for 'simple' tasks."""
+    import json as _json
     tasks = db.query(OnboardingTask).filter(OnboardingTask.employee_id == employee_id).all()
     by_track: dict[str, list] = {"HR": [], "IT": [], "Security": [], "Manager": []}
     for t in tasks:
@@ -74,6 +79,10 @@ def get_tasks(employee_id: str, db: Session = Depends(get_db)):
             "is_mandatory": t.is_mandatory,
             "is_ai_generated": t.is_ai_generated == "true",
             "ai_recommendation": t.ai_recommendation,
+            "task_type": t.task_type,
+            "options": _json.loads(t.options) if t.options else None,
+            "selected_options": _json.loads(t.selected_options) if t.selected_options else None,
+            "category": t.category,
             "created_at": t.created_at, "decided_at": t.decided_at,
         })
 
@@ -82,6 +91,31 @@ def get_tasks(employee_id: str, db: Session = Depends(get_db)):
         "tasks": by_track,
         "track_status": track_statuses,
     }
+
+
+@router.patch("/{employee_id}/tasks/{task_id}/selection")
+def update_task_selection(employee_id: str, task_id: str, payload: TaskSelectionUpdate, db: Session = Depends(get_db)):
+    """Lets the approver edit a multi_select/single_select task's choice
+    before deciding -- the 'AI suggests, human can change it' pattern.
+    Locked once the task has been decided, so history can't be silently
+    rewritten after approval/rejection."""
+    task = db.query(OnboardingTask).filter(
+        OnboardingTask.id == task_id, OnboardingTask.employee_id == employee_id
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.task_type not in ("multi_select", "single_select"):
+        raise HTTPException(status_code=400, detail="This task does not support selection editing")
+    if task.status != "pending":
+        raise HTTPException(status_code=400, detail="Cannot change selection after a task has been decided")
+
+    import json as _json
+    if task.task_type == "single_select" and len(payload.selected_options) != 1:
+        raise HTTPException(status_code=400, detail="single_select tasks require exactly one selected option")
+
+    task.selected_options = _json.dumps(payload.selected_options)
+    db.commit()
+    return {"id": task.id, "selected_options": payload.selected_options}
 
 
 @router.post("/{employee_id}/tasks/{task_id}/decide")

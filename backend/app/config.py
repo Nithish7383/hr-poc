@@ -44,3 +44,40 @@ def get_required_documents():
 
 def get_projects():
     return _load("projects.json")
+
+
+def get_all_applications() -> list[str]:
+    """Flattened, deduplicated list across every role -- the full catalog
+    an approver can pick from when editing the Assign Applications task,
+    not just what AI suggested for this specific role."""
+    apps = get_applications()
+    seen = []
+    for role_apps in apps.values():
+        for a in role_apps:
+            if a not in seen:
+                seen.append(a)
+    return seen
+
+
+def get_all_security_groups() -> list[str]:
+    groups = get_security_groups()
+    seen = []
+    for role_groups in groups.values():
+        for g in role_groups:
+            if g not in seen:
+                seen.append(g)
+    return seen
+
+
+def get_all_assets() -> list[str]:
+    assets = get_asset_templates()
+    seen = []
+    for role_assets in assets.values():
+        for a in role_assets:
+            if a not in seen:
+                seen.append(a)
+    return seen
+
+
+def get_all_project_names() -> list[str]:
+    return [p["name"] for p in get_projects()]

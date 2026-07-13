@@ -51,5 +51,56 @@
     "start_date": "2026-07-09",
     "documents_submitted": [],
     "synced": true
+  },
+  {
+    "hrms_employee_id": "EMP-1004",
+    "full_name": "Divya Menon",
+    "work_email": "divya.menon@example.com",
+    "department": "Marketing",
+    "job_title": "Marketing Coordinator",
+    "location": "Mumbai",
+    "manager_name": "Arjun Kapoor",
+    "start_date": "2026-07-11",
+    "documents_submitted": [
+      "Government ID Proof",
+      "Address Proof",
+      "Educational Certificates",
+      "Previous Employment Relieving Letter",
+      "Bank Account Details"
+    ],
+    "synced": true
+  },
+  {
+    "hrms_employee_id": "EMP-1005",
+    "full_name": "Suresh Iyer",
+    "work_email": "suresh.iyer@example.com",
+    "department": "Legal",
+    "job_title": "Legal Intern",
+    "role": "InvalidRoleXYZ",
+    "years_of_experience": 0,
+    "location": "Chennai",
+    "manager_name": "David Klein",
+    "start_date": "2026-07-12",
+    "documents_submitted": [
+      "Government ID Proof",
+      "Address Proof",
+      "Educational Certificates"
+    ],
+    "synced": true
+  },
+  {
+    "hrms_employee_id": "EMP-1006",
+    "full_name": "Fatima Noor",
+    "work_email": "fatima.noor@example.com",
+    "department": "Compliance",
+    "job_title": "Compliance Officer",
+    "role": "Compliance Officer",
+    "experience_level": "fresher",
+    "years_of_experience": 5,
+    "location": "New York",
+    "manager_name": "Priya Nair",
+    "start_date": "2026-07-13",
+    "documents_submitted": [],
+    "synced": true
   }
 ]

@@ -9,6 +9,7 @@ Employee onboarding completes only when every track has completed.
 """
 from sqlalchemy.orm import Session
 from app.models import OnboardingTask, Employee
+import datetime
 
 TRACKS = ["HR", "IT", "Security", "Manager"]
 
@@ -54,11 +55,14 @@ def get_all_track_statuses(db: Session, employee_id: str) -> dict:
 
 def recompute_employee_status(db: Session, employee_id: str):
     """Call after any task decision -- flips employee to 'active' once
-    every track is completed. No-op if employee isn't mid-onboarding."""
+    every track is completed. No-op if employee isn't mid-onboarding.
+    Records activated_at so AI Insights can compute real onboarding
+    duration per department later."""
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee or employee.status != "onboarding":
         return
     statuses = get_all_track_statuses(db, employee_id)
     if all(s == "completed" for s in statuses.values()):
         employee.status = "active"
+        employee.activated_at = datetime.datetime.utcnow()
         db.commit()

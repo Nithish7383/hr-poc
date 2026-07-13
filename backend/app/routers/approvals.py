@@ -10,6 +10,7 @@ OFFBOARDING approvals are UNCHANGED -- still the original per-track
 Approval table, since this redesign was onboarding-specific.
 """
 import datetime
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -48,7 +49,11 @@ def get_approvals_for_role(approver_role: str, db: Session = Depends(get_db)):
                     {"id": t.id, "task_name": t.task_name, "status": t.status,
                      "is_mandatory": t.is_mandatory,
                      "is_ai_generated": t.is_ai_generated == "true",
-                     "ai_recommendation": t.ai_recommendation}
+                     "ai_recommendation": t.ai_recommendation,
+                     "task_type": t.task_type,
+                     "options": json.loads(t.options) if t.options else None,
+                     "selected_options": json.loads(t.selected_options) if t.selected_options else None,
+                     "category": t.category}
                     for t in task_list
                 ],
             })

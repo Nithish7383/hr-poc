@@ -50,3 +50,7 @@ class ApprovalDecision(BaseModel):
 
 class TaskDecision(BaseModel):
     status: str  # "approved" | "rejected" -- decision on a single OnboardingTask
+
+
+class TaskSelectionUpdate(BaseModel):
+    selected_options: list[str]  # the approver's edited choice, for multi_select/single_select tasks only

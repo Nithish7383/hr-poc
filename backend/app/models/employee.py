@@ -28,6 +28,7 @@ class Employee(Base):
     joining_date = Column(String, nullable=True)
     sync_source = Column(String, default="manual")  # "manual" | "hrms"
     status = Column(String, default="registered")   # registered -> documents_pending -> onboarding -> active -> offboarding -> exited
+    activated_at = Column(DateTime, nullable=True)  # set when status flips to 'active' -- lets AI Insights compute real onboarding duration per department
     documents_submitted = Column(Text, nullable=True)  # JSON-encoded list, as reported by HRMS/manual entry at registration time
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -61,7 +62,8 @@ class AssetAllocation(Base):
     id = Column(String, primary_key=True, default=gen_id)
     employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
     asset_list = Column(Text, nullable=True)   # JSON-encoded list
-    status = Column(String, default="pending")  # pending | allocated | returned | damaged
+    status = Column(String, default="pending")  # pending | allocated | returned | damaged | pending_return
+    pending_return_at = Column(DateTime, nullable=True)  # set when status flips to pending_return during offboarding -- lets AI Insights flag overdue returns
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -158,12 +160,26 @@ class OnboardingTask(Base):
     single source of truth both the Onboarding Tracker (read-only display)
     and the Approval Dashboard (the only place status changes) read from.
 
-    status is now an APPROVAL state, not a completion state:
+    status is an APPROVAL state, not a completion state:
     pending | approved | rejected. The Approval Dashboard is the only
     writer; the Tracker only ever reads. Track/employee completion is
     computed live from these rows (see services/track_status.py), never
     cached, to avoid the class of bug where a stored percentage drifts
     out of sync with the real data.
+
+    task_type distinguishes how the Approval Dashboard should render and
+    let the approver interact with a task -- "simple" tasks are just
+    approve/reject with AI reasoning shown; "multi_select" tasks (Assign
+    Applications, Asset Allocation, Assign Security Groups) let the
+    approver edit a checklist before approving, pre-filled with the AI's
+    suggestion; "single_select" (Project Recommendation) is a dropdown
+    over the full catalog, pre-filled with the AI's top pick. This is
+    the "AI suggests, human decides and can change it" pattern applied
+    consistently, not just for projects.
+
+    category marks which onboarding-task rows represent compliance items
+    specifically (so compliance completion can be computed from here,
+    under HR, rather than a separate untracked table nobody owns).
     """
     __tablename__ = "onboarding_tasks"
 
@@ -175,6 +191,10 @@ class OnboardingTask(Base):
     is_mandatory = Column(Boolean, default=True)  # non-mandatory tasks (e.g. Team Introduction) don't block track completion
     is_ai_generated = Column(String, default="false")  # "true"/"false" -- whether AI produced the content for this task
     ai_recommendation = Column(Text, nullable=True)  # AI reasoning/output shown alongside the task, if any
+    task_type = Column(String, default="simple")  # simple | multi_select | single_select
+    options = Column(Text, nullable=True)  # JSON list -- ALL selectable values (full catalog), for multi/single_select only
+    selected_options = Column(Text, nullable=True)  # JSON list -- CURRENTLY selected values, editable while status='pending'
+    category = Column(String, nullable=True)  # e.g. "compliance" -- marks HR tasks that represent a compliance item
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
 

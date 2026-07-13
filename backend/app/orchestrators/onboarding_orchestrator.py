@@ -18,7 +18,7 @@ import datetime
 from sqlalchemy.orm import Session
 from app.models import (
     Employee, OnboardingTracker, RoleClassification, AccessRecommendation,
-    AssetAllocation, ComplianceTask, AuditLog,
+    AssetAllocation, AuditLog,
     EmployeeDocument, OnboardingTask,
 )
 from app.agents.role_classifier import classify_role
@@ -28,7 +28,10 @@ from app.agents.compliance_recommender import recommend_compliance
 from app.agents.project_recommender_agent import recommend_projects
 from app.agents.privileged_access_agent import review_privileged_access
 from app.agents.team_intro_agent import draft_team_intro
-from app.config import get_required_documents, get_roles
+from app.config import (
+    get_required_documents, get_roles,
+    get_all_applications, get_all_security_groups, get_all_assets, get_all_project_names,
+)
 
 STEP_REGISTERED = "Registered"
 STEP_VALIDATION = "Validation"
@@ -56,15 +59,26 @@ def _audit(db: Session, employee_id: str, agent: str, action: str, detail: str =
 
 
 def _add_task(db: Session, employee_id: str, track: str, task_name: str,
-               is_mandatory: bool = True, is_ai_generated: bool = False, ai_recommendation: str = None):
+               is_mandatory: bool = True, is_ai_generated: bool = False, ai_recommendation: str = None,
+               task_type: str = "simple", options: list = None, selected_options: list = None,
+               category: str = None):
     """Every task starts 'pending' -- the Approval Dashboard is the only
     place status ever changes, per the architecture change. Nothing here
-    auto-approves anything, even the AI-generated ones."""
+    auto-approves anything, even the AI-generated ones.
+
+    For multi_select/single_select tasks, `options` is the FULL catalog
+    and `selected_options` is the AI's suggestion, pre-filled but editable
+    by the approver before they decide -- 'AI suggests, human decides and
+    can change it', applied consistently across apps/assets/groups/projects."""
     db.add(OnboardingTask(
         employee_id=employee_id, track=track, task_name=task_name, status="pending",
         is_mandatory=is_mandatory,
         is_ai_generated="true" if is_ai_generated else "false",
         ai_recommendation=ai_recommendation,
+        task_type=task_type,
+        options=json.dumps(options) if options is not None else None,
+        selected_options=json.dumps(selected_options) if selected_options is not None else None,
+        category=category,
     ))
     db.commit()
 
@@ -159,16 +173,14 @@ def _continue_after_validation(db: Session, employee: Employee):
     db.commit()
 
     compliance_items = recommend_compliance(employee.role)
-    for task_name in compliance_items:
-        db.add(ComplianceTask(employee_id=employee_id, task_name=task_name))
-    db.commit()
 
     # --- HR track ---
     _mark(db, employee_id, STEP_HR_TRACK, "running")
     _add_task(db, employee_id, "HR", "Verify Documents", is_ai_generated=True,
               ai_recommendation="All required documents confirmed present at validation.")
-    _add_task(db, employee_id, "HR", "Compliance Checklist", is_ai_generated=True,
-              ai_recommendation=f"Recommended tasks based on role '{employee.role}': {', '.join(compliance_items)}")
+    for item_name in compliance_items:
+        _add_task(db, employee_id, "HR", item_name, is_ai_generated=True, category="compliance",
+                  ai_recommendation=f"Recommended for role '{employee.role}' as part of standard compliance.")
     _add_task(db, employee_id, "HR", "Complete Documentation")
     if is_fresher:
         _add_task(db, employee_id, "HR", "Additional Learning Modules", is_mandatory=False, is_ai_generated=True,
@@ -179,15 +191,18 @@ def _continue_after_validation(db: Session, employee: Employee):
     # --- IT track ---
     _mark(db, employee_id, STEP_IT_TRACK, "running")
     _add_task(db, employee_id, "IT", "Create User Account")
-    _add_task(db, employee_id, "IT", "Assign Applications", is_ai_generated=True, ai_recommendation=access["reasoning"])
+    _add_task(db, employee_id, "IT", "Assign Applications", is_ai_generated=True, ai_recommendation=access["reasoning"],
+              task_type="multi_select", options=get_all_applications(), selected_options=access["applications"])
     _add_task(db, employee_id, "IT", "Asset Allocation", is_ai_generated=True,
-              ai_recommendation=f"Recommended assets for '{employee.role}': {', '.join(hardware['asset_list'])}")
+              ai_recommendation=f"Recommended assets for '{employee.role}': {', '.join(hardware['asset_list'])}",
+              task_type="multi_select", options=get_all_assets(), selected_options=hardware["asset_list"])
     _mark(db, employee_id, STEP_IT_TRACK, "completed")
     _audit(db, employee_id, "IT Track", "Task list generated", "Tasks created for IT")
 
     # --- Security track ---
     _mark(db, employee_id, STEP_SECURITY_TRACK, "running")
-    _add_task(db, employee_id, "Security", "Assign Security Groups", is_ai_generated=True, ai_recommendation=access["reasoning"])
+    _add_task(db, employee_id, "Security", "Assign Security Groups", is_ai_generated=True, ai_recommendation=access["reasoning"],
+              task_type="multi_select", options=get_all_security_groups(), selected_options=access["security_groups"])
     if access["ethical_wall_rules"]:
         ethical_wall_note = (f"Legal role -- allowed: {access['ethical_wall_rules']['allowed']}, "
                               f"restricted: {access['ethical_wall_rules']['restricted']}")
@@ -205,8 +220,11 @@ def _continue_after_validation(db: Session, employee: Employee):
 
     projects = recommend_projects(employee.role, employee.department, employee.experience_level)
     project_lines = [f"{r['project']}: {r['reasoning']}" for r in projects["recommendations"]]
+    top_pick = projects["recommendations"][0]["project"] if projects["recommendations"] else None
     _add_task(db, employee_id, "Manager", "Project Recommendation", is_ai_generated=True,
-              ai_recommendation=" | ".join(project_lines))
+              ai_recommendation=" | ".join(project_lines),
+              task_type="single_select", options=get_all_project_names(),
+              selected_options=[top_pick] if top_pick else [])
 
     induction_note = f"Suggested induction date: {employee.joining_date or 'TBD'} (employee's joining date)."
     _add_task(db, employee_id, "Manager", "Schedule Induction", is_ai_generated=True, ai_recommendation=induction_note)

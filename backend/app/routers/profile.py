@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
     Employee, OnboardingTracker, OffboardingTracker, AccessRecommendation,
-    AssetAllocation, ComplianceTask, Approval, AuditLog, OnboardingTask,
+    AssetAllocation, Approval, AuditLog, OnboardingTask,
 )
 from app.services.progress import get_onboarding_completion_pct
 from app.services.track_status import get_all_track_statuses, TRACKS
@@ -67,7 +67,9 @@ def get_profile(employee_id: str, db: Session = Depends(get_db)):
 
     access = db.query(AccessRecommendation).filter(AccessRecommendation.employee_id == employee_id).order_by(AccessRecommendation.created_at.desc()).first()
     assets = db.query(AssetAllocation).filter(AssetAllocation.employee_id == employee_id).order_by(AssetAllocation.created_at.desc()).first()
-    compliance_tasks = db.query(ComplianceTask).filter(ComplianceTask.employee_id == employee_id).all()
+    compliance_tasks = db.query(OnboardingTask).filter(
+        OnboardingTask.employee_id == employee_id, OnboardingTask.category == "compliance"
+    ).all()
 
     # Onboarding: task-level, grouped by track, with live-computed track status
     onboarding_tasks_raw = db.query(OnboardingTask).filter(OnboardingTask.employee_id == employee_id).all()

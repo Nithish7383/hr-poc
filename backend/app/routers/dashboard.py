@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models import (
-    Employee, Approval, RiskAssessment, ComplianceTask,
+    Employee, Approval, RiskAssessment,
     OnboardingTracker, OffboardingTracker, AuditLog, OnboardingTask,
 )
 
@@ -60,8 +60,10 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 
     high_risk_employees = db.query(RiskAssessment).filter(RiskAssessment.risk_level == "High").count()
 
-    total_tasks = db.query(ComplianceTask).count()
-    completed_tasks = db.query(ComplianceTask).filter(ComplianceTask.status == "completed").count()
+    total_tasks = db.query(OnboardingTask).filter(OnboardingTask.category == "compliance").count()
+    completed_tasks = db.query(OnboardingTask).filter(
+        OnboardingTask.category == "compliance", OnboardingTask.status == "approved"
+    ).count()
     compliance_completion_pct = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
 
     onboarded_today = (
