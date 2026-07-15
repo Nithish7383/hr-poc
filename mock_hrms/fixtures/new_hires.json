@@ -36,7 +36,7 @@
       "Educational Certificates",
       "Previous Employment Relieving Letter"
     ],
-    "synced": false
+    "synced": true
   },
   {
     "hrms_employee_id": "EMP-1003",
@@ -50,7 +50,7 @@
     "manager_name": "Divya Rao",
     "start_date": "2026-07-09",
     "documents_submitted": [],
-    "synced": false
+    "synced": true
   },
   {
     "hrms_employee_id": "EMP-1004",
@@ -68,7 +68,7 @@
       "Previous Employment Relieving Letter",
       "Bank Account Details"
     ],
-    "synced": false
+    "synced": true
   },
   {
     "hrms_employee_id": "EMP-1005",
@@ -86,7 +86,7 @@
       "Address Proof",
       "Educational Certificates"
     ],
-    "synced": false
+    "synced": true
   },
   {
     "hrms_employee_id": "EMP-1006",
@@ -101,6 +101,6 @@
     "manager_name": "Priya Nair",
     "start_date": "2026-07-13",
     "documents_submitted": [],
-    "synced": false
+    "synced": true
   }
 ]

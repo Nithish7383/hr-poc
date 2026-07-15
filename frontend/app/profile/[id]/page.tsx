@@ -49,6 +49,35 @@ function ActivityIcon({ className }: { className?: string }) {
   );
 }
 
+function AppsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function ShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function AssetIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="14" rx="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="18" x2="12" y2="21" />
+    </svg>
+  );
+}
+
 const STATUS_STYLES: Record<string, string> = {
   active: "bg-green-100 text-green-700",
   onboarding: "bg-amber-100 text-amber-700",
@@ -234,13 +263,26 @@ export default function ProfilePage() {
           {/* Applications / Security Groups / Assets */}
           <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-3">
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <p className="mb-4 text-xs font-bold uppercase tracking-wide text-gray-700">
-                Applications
-              </p>
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#14213D]/5 text-[#14213D]">
+                  <AppsIcon className="h-4 w-4" />
+                </span>
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                  Applications
+                </p>
+              </div>
               {profile.applications?.length > 0 ? (
-                <ul className="space-y-2.5 text-sm text-[#14213D]">
-                  {profile.applications.map((a: string) => (
-                    <li key={a}>{a}</li>
+                <ul>
+                  {profile.applications.map((a: string, idx: number) => (
+                    <li
+                      key={a}
+                      className={`flex items-center gap-2.5 py-2 text-sm text-[#14213D] ${
+                        idx !== profile.applications.length - 1 ? "border-b border-gray-100" : ""
+                      }`}
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#D9A653]" />
+                      {a}
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -249,13 +291,26 @@ export default function ProfilePage() {
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <p className="mb-4 text-xs font-bold uppercase tracking-wide text-gray-700">
-                Security Groups
-              </p>
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#14213D]/5 text-[#14213D]">
+                  <ShieldIcon className="h-4 w-4" />
+                </span>
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                  Security Groups
+                </p>
+              </div>
               {profile.security_groups?.length > 0 ? (
-                <ul className="space-y-2.5 text-sm text-[#14213D]">
-                  {profile.security_groups.map((g: string) => (
-                    <li key={g}>{g}</li>
+                <ul>
+                  {profile.security_groups.map((g: string, idx: number) => (
+                    <li
+                      key={g}
+                      className={`flex items-center gap-2.5 py-2 text-sm text-[#14213D] ${
+                        idx !== profile.security_groups.length - 1 ? "border-b border-gray-100" : ""
+                      }`}
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#D9A653]" />
+                      {g}
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -264,13 +319,26 @@ export default function ProfilePage() {
             </div>
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <p className="mb-4 text-xs font-bold uppercase tracking-wide text-gray-700">
-                Assets
-              </p>
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#14213D]/5 text-[#14213D]">
+                  <AssetIcon className="h-4 w-4" />
+                </span>
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                  Assets
+                </p>
+              </div>
               {profile.assets?.length > 0 ? (
-                <ul className="space-y-2.5 text-sm text-[#14213D]">
-                  {profile.assets.map((a: string) => (
-                    <li key={a}>{a}</li>
+                <ul>
+                  {profile.assets.map((a: string, idx: number) => (
+                    <li
+                      key={a}
+                      className={`flex items-center gap-2.5 py-2 text-sm text-[#14213D] ${
+                        idx !== profile.assets.length - 1 ? "border-b border-gray-100" : ""
+                      }`}
+                    >
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-[#D9A653]" />
+                      {a}
+                    </li>
                   ))}
                 </ul>
               ) : (

@@ -94,8 +94,6 @@ const menu = [
   { href: "/approvals", label: "Approval Dashboard", icon: ApprovalsIcon },
   { href: "/ai-decisions", label: "AI Decision Center", icon: AiIcon },
   { href: "/compliance", label: "Compliance Dashboard", icon: ComplianceIcon },
-  { href: "/ai-insights", label: "AI Insights", icon: AiIcon },
-  { href: "/reports", label: "Reports Dashboard", icon: DirectoryIcon },
 ];
 
 export default function Sidebar({
