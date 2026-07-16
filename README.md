@@ -132,13 +132,3 @@ Restart the backend (recreates tables clean), reset the mock HRMS
 through Approval Dashboard -> Tracker -> Profile -> Dashboard -> Insights ->
 Compliance -> Reports for at least one full employee, onboarding through
 offboarding.
-
-## Setup — Gmail App Password 
-
-
-Enable 2-Step Verification on the Gmail account you'll use: https://myaccount.google.com/security
-Generate an App Password: https://myaccount.google.com/apppasswords → select "Mail" → generate → copy the 16-character code (spaces don't matter)
-
-
-
-

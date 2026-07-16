@@ -1,7 +1,7 @@
 {
-  "default": ["NDA", "Employee Handbook", "Information Security Policy", "Ethics Policy", "Cyber Security Training"],
-  "Attorney": ["NDA", "Employee Handbook", "Information Security Policy", "Ethics Policy", "Confidentiality Agreement", "Cyber Security Training"],
-  "Partner": ["NDA", "Employee Handbook", "Information Security Policy", "Ethics Policy", "Confidentiality Agreement", "Cyber Security Training"],
-  "Finance": ["NDA", "Employee Handbook", "Information Security Policy", "Ethics Policy", "Cyber Security Training", "Financial Controls Policy"],
-  "IT Administrator": ["NDA", "Employee Handbook", "Information Security Policy", "Ethics Policy", "Cyber Security Training", "Privileged Access Policy"]
+  "default": [],
+  "Attorney": [],
+  "Partner": [],
+  "Finance": [],
+  "IT Administrator": []
 }

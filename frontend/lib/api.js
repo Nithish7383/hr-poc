@@ -48,6 +48,11 @@ export const api = {
   onboardingStatus: (id) => request(`/onboarding/${id}/status`),
   onboardingDocuments: (id) => request(`/onboarding/${id}/documents`),
   markDocumentsReceived: (id) => request(`/onboarding/${id}/documents/mark-received`, { method: "POST" }),
+  updateEmailDraft: (id, subject, body) =>
+    request(`/onboarding/${id}/documents/email-draft`, {
+      method: "PATCH", body: JSON.stringify({ subject, body }),
+    }),
+  checkInbox: (id) => request(`/onboarding/${id}/documents/check-inbox`, { method: "POST" }),
   onboardingTasks: (id) => request(`/onboarding/${id}/tasks`),
   decideTask: (id, taskId, status) =>
     request(`/onboarding/${id}/tasks/${taskId}/decide`, { method: "POST", body: JSON.stringify({ status }) }),

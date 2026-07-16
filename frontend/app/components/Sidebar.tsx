@@ -92,7 +92,7 @@ const menu = [
   { href: "/onboarding-tracker", label: "Onboarding Tracker", icon: OnboardingIcon },
   { href: "/offboarding-tracker", label: "Offboarding Tracker", icon: OffboardingIcon },
   { href: "/approvals", label: "Approval Dashboard", icon: ApprovalsIcon },
-  { href: "/ai-decisions", label: "AI Decision Center", icon: AiIcon },
+  { href: "/ai-insights", label: "AI Insights", icon: AiIcon },
   { href: "/compliance", label: "Compliance Dashboard", icon: ComplianceIcon },
 ];
 

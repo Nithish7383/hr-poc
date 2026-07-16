@@ -29,9 +29,12 @@ const TRACK_STATUS_COLOR: Record<string, string> = {
   completed: "#16a34a", in_progress: "#ea580c", blocked: "#dc2626", not_started: "#9ca3af",
 };
 
-const TRACK_STEPS = ["HR Track", "IT Track", "Security Track", "Manager Track"];
+// Security Track removed; Manager Track relabeled as Delivery Track (still maps
+// to the "Manager" key from the API/tasksByTrack data — update if your backend
+// key differs).
+const TRACK_STEPS = ["HR Track", "IT Track", "Delivery Track"];
 const STEP_TO_TRACK: Record<string, string> = {
-  "HR Track": "HR", "IT Track": "IT", "Security Track": "Security", "Manager Track": "Manager",
+  "HR Track": "HR", "IT Track": "IT", "Delivery Track": "Manager",
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -103,7 +106,8 @@ export default function OnboardingTrackerDetailPage() {
     }
   }
 
-  const ALL_STEPS = ["Registered", "Validation", "HR Track", "IT Track", "Security Track", "Manager Track"];
+  // Security Track removed; Manager Track renamed to Delivery Track
+  const ALL_STEPS = ["Registered", "Validation", "HR Track", "IT Track", "Delivery Track"];
 
   const latestByStep = new Map<string, any>();
   rawSteps.forEach((s) => latestByStep.set(s.step, s));
@@ -197,62 +201,6 @@ export default function OnboardingTrackerDetailPage() {
         </p>
 
         {loading && <p>Loading...</p>}
-
-        {!loading && isBlocked && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 14,
-              border: "1px solid #fdba74",
-              background: "linear-gradient(135deg, #fff7ed, #fffaf3)",
-              borderRadius: 14,
-              padding: 18,
-              marginBottom: 24,
-            }}
-          >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                background: "#f97316",
-                color: "#fff",
-                fontSize: 16,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              ⏸
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: "#c2410c", marginBottom: 4, fontSize: 14.5 }}>
-                Onboarding paused — missing documents
-              </div>
-              <div style={{ fontSize: 13, color: "#9a3412", marginBottom: 14 }}>
-                Waiting on: {pendingDocs.map((d: any) => d.document_name).join(", ")}
-              </div>
-              <button
-                onClick={handleMarkReceived}
-                disabled={resuming}
-                style={{
-                  background: resuming ? "#fdba74" : "#0f172a",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "10px 18px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: resuming ? "default" : "pointer",
-                }}
-              >
-                {resuming ? "Resuming..." : "Mark Documents Received & Resume"}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Horizontal tracker */}
         {!loading && orderedSteps.length > 0 && (
@@ -397,7 +345,7 @@ export default function OnboardingTrackerDetailPage() {
 
             {activeIsTrackStep && (
               <>
-                <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>{activeTrackName} Tasks</div>
+                <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>{activeStep.step} Tasks</div>
                 {activeTrackTasks.length === 0 && <div style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>No tasks yet.</div>}
                 {activeTrackTasks.map((t: any, idx: number) => {
                   const tColor = TASK_STATUS_COLOR[t.status] || "#0f172a";
