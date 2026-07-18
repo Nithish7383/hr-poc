@@ -3,5 +3,5 @@ from .employee import (
     RoleClassification, AccessRecommendation, AssetAllocation,
     ComplianceTask, RiskAssessment, Approval, Report, AuditLog,
     EmployeeDocument, OnboardingTask, OffboardingTask, DocumentRequestEmail,
-    ReceivedAttachment, SoftwareLicense
+    ReceivedAttachment, SoftwareLicense, WelcomeEmail, FeedbackEmail, FeedbackResponse
 )

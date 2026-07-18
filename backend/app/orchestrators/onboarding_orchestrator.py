@@ -29,7 +29,10 @@ from app.agents.project_recommender_agent import recommend_projects
 from app.agents.privileged_access_agent import review_privileged_access
 from app.agents.team_intro_agent import draft_team_intro
 from app.agents.document_email_agent import draft_document_request_email
+from app.agents.welcome_email_agent import draft_welcome_email
+from app.agents.feedback_survey_agent import draft_feedback_request_email
 from app import email_client
+from app.models import WelcomeEmail, FeedbackEmail
 from app.config import (
     get_required_documents, get_roles,
     get_all_applications, get_all_security_groups, get_all_assets, get_all_project_names,
@@ -109,6 +112,8 @@ def run_onboarding(db: Session, employee_id: str):
         _mark(db, employee_id, STEP_VALIDATION, "failed")
         _audit(db, employee_id, "Validation Agent", "Validation failed", "Missing mandatory field(s).")
         return {"status": "failed", "reason": "Missing mandatory field(s)."}
+
+    _draft_and_queue_welcome_email(db, employee)
 
     missing_docs = _check_missing_documents(employee)
     if missing_docs:
@@ -329,3 +334,46 @@ def _draft_and_queue_missing_document_email(db: Session, employee: Employee, mis
     )
     _audit(db, employee.id, "Validation Agent", "Document request email drafted",
            f"Missing: {', '.join(missing_docs)}")
+
+
+def _draft_and_queue_welcome_email(db: Session, employee: Employee):
+    """One welcome email per onboarding -- guarded the same way as the
+    document-request draft (skip if one already exists for this
+    employee), since run_onboarding() itself is already guarded against
+    re-running for a non-'registered' employee, but this stays defensive
+    in case of a retried/duplicate call."""
+    existing = db.query(WelcomeEmail).filter(WelcomeEmail.employee_id == employee.id).first()
+    if existing:
+        return
+    draft = draft_welcome_email(employee.name, employee.role, employee.department,
+                                 employee.joining_date, employee.manager)
+    db.add(WelcomeEmail(employee_id=employee.id, subject=draft["subject"], body=draft["body"], status="drafted"))
+    db.commit()
+
+    _add_task(
+        db, employee.id, "HR", "Welcome Email",
+        is_mandatory=False, is_ai_generated=True, task_type="email_draft",
+        ai_recommendation="Drafted welcome email for the new hire. Review and approve to send.",
+    )
+    _audit(db, employee.id, "Welcome Email Agent", "Welcome email drafted", "")
+
+
+def draft_and_queue_feedback_email(db: Session, employee: Employee):
+    """Fires once an employee reaches 'active' status (called from the
+    router right after recompute_employee_status flips it) -- not
+    module-private since routers/onboarding.py needs to call it
+    directly, unlike the other _draft_and_queue_* helpers which are
+    only ever called from within this orchestrator."""
+    existing = db.query(FeedbackEmail).filter(FeedbackEmail.employee_id == employee.id).first()
+    if existing:
+        return
+    draft = draft_feedback_request_email(employee.name)
+    db.add(FeedbackEmail(employee_id=employee.id, subject=draft["subject"], body=draft["body"], status="drafted"))
+    db.commit()
+
+    _add_task(
+        db, employee.id, "HR", "Onboarding Feedback Request",
+        is_mandatory=False, is_ai_generated=True, task_type="email_draft",
+        ai_recommendation="Drafted onboarding feedback request. Review and approve to send.",
+    )
+    _audit(db, employee.id, "Feedback Survey Agent", "Feedback request email drafted", "")

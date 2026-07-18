@@ -171,6 +171,60 @@ class DocumentRequestEmail(Base):
     generated_at = Column(DateTime, default=datetime.datetime.utcnow)
     sent_at = Column(DateTime, nullable=True)
     replied_at = Column(DateTime, nullable=True)
+    reminder_count = Column(Integer, default=0)  # how many reminder emails sent for this request so far
+    last_reminder_at = Column(DateTime, nullable=True)  # used to compute the next reminder window
+
+
+class WelcomeEmail(Base):
+    """Real welcome email sent to a new hire at the start of onboarding
+    (fires even if Validation is blocked on missing documents -- a
+    welcome email shouldn't wait on paperwork). No reply is expected,
+    so unlike DocumentRequestEmail this has no message_id/replied_at
+    threading fields -- it's one-way."""
+    __tablename__ = "welcome_emails"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    subject = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    status = Column(String, default="drafted")  # drafted | sent
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+
+
+class FeedbackEmail(Base):
+    """Onboarding feedback request, sent once an employee reaches
+    'active' status. Mirrors DocumentRequestEmail's drafted->sent->replied
+    lifecycle and threading (message_id), since we DO need to match a
+    reply back to this specific request -- same mechanism, different
+    purpose."""
+    __tablename__ = "feedback_emails"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    subject = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    status = Column(String, default="drafted")  # drafted | sent | replied
+    message_id = Column(String, nullable=True)
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    replied_at = Column(DateTime, nullable=True)
+
+
+class FeedbackResponse(Base):
+    """The employee's reply to a FeedbackEmail, plus the AI's summary
+    of it. raw_text is kept verbatim (auditability); summary/sentiment
+    are AI-derived and shown on top of it, never replacing it."""
+    __tablename__ = "feedback_responses"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    feedback_email_id = Column(String, ForeignKey("feedback_emails.id"), nullable=False)
+    raw_text = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)
+    sentiment = Column(String, nullable=True)  # positive | neutral | negative
+    received_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 
 class OnboardingTask(Base):
     """One row per task per track (HR/IT/Security/Manager). This is the
@@ -214,6 +268,7 @@ class OnboardingTask(Base):
     category = Column(String, nullable=True)  # e.g. "compliance" -- marks HR tasks that represent a compliance item
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
+    escalated_at = Column(DateTime, nullable=True)  # set once an overdue-task escalation email has fired for this task -- one-shot, same pattern as license low-seat alerts
 
 
 class OffboardingTask(Base):
@@ -241,6 +296,7 @@ class OffboardingTask(Base):
     category = Column(String, nullable=True)  # e.g. "compliance"
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
+    escalated_at = Column(DateTime, nullable=True)  # mirrors OnboardingTask.escalated_at
 
 
 class AuditLog(Base):

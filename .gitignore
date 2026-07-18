@@ -42,3 +42,5 @@ backend/storage/faiss/
 # Ignore all generated storage files
 backend/storage/*.index
 backend/storage/*.pkl
+
+project.zip
