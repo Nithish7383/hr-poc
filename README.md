@@ -125,7 +125,7 @@ than failing.
 
 For a full clean-database test:
 ```bash
-docker exec -it poc-repo-postgres-1 psql -U poc -d onboarding_poc -c "DROP TABLE IF EXISTS employees, onboarding_tracker, offboarding_tracker, role_classifications, access_recommendations, asset_allocations, compliance_tasks, exit_requests, risk_assessments, approvals, reports, audit_log, employee_documents, onboarding_tasks, offboarding_tasks CASCADE;"
+docker exec -it poc-repo-postgres-1 psql -U poc -d onboarding_poc -c "DROP TABLE IF EXISTS employees, onboarding_tracker, offboarding_tracker, role_classifications, access_recommendations, asset_allocations, compliance_tasks, exit_requests, risk_assessments, approvals, reports, audit_log, employee_documents, onboarding_tasks, offboarding_tasks, document_request_emails, received_attachments, software_licenses CASCADE;"
 ```
 Restart the backend (recreates tables clean), reset the mock HRMS
 (`POST /hrms/_reset`), then sync (`POST /hrms/sync/new-hires`) and walk

@@ -100,6 +100,31 @@ def _extract_safe_attachments(msg) -> list[dict]:
     return results
 
 
+def _extract_plain_text_body(msg) -> str:
+    """Best-effort plain text extraction, for callers that need the
+    reply's actual words (e.g. feedback summarization) rather than just
+    its attachments. Falls back to an empty string if the reply is
+    HTML-only or unparseable -- never raises, since a missing body
+    shouldn't block attachment handling for callers that don't need it."""
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain" and not part.get_filename():
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        charset = part.get_content_charset() or "utf-8"
+                        return payload.decode(charset, errors="replace").strip()
+            return ""
+        if msg.get_content_type() == "text/plain":
+            payload = msg.get_payload(decode=True)
+            if payload:
+                charset = msg.get_content_charset() or "utf-8"
+                return payload.decode(charset, errors="replace").strip()
+        return ""
+    except Exception:
+        return ""
+
+
 def check_for_reply(in_reply_to_message_id: str) -> dict | None:
     """Searches the inbox for a reply to a specific sent message
     (matched via the In-Reply-To / References threading headers, not
@@ -131,11 +156,13 @@ def check_for_reply(in_reply_to_message_id: str) -> dict | None:
         raw_email = msg_data[0][1]
         msg = email.message_from_bytes(raw_email)
         attachments = _extract_safe_attachments(msg)
+        body_text = _extract_plain_text_body(msg)
 
         return {
             "from": msg.get("From", ""),
             "subject": msg.get("Subject", ""),
             "attachments": attachments,
+            "body_text": body_text,
         }
     except imaplib.IMAP4.error as e:
         raise EmailClientError(f"IMAP check failed: {e}") from e
