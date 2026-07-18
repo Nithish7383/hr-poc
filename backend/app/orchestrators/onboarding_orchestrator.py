@@ -207,7 +207,19 @@ def _continue_after_validation(db: Session, employee: Employee):
     # --- IT track ---
     _mark(db, employee_id, STEP_IT_TRACK, "running")
     _add_task(db, employee_id, "IT", "Create User Account")
+    _add_task(db, employee_id, "IT", "Create Active Directory Account", is_ai_generated=True,
+              ai_recommendation=f"Mock AD account request for '{employee.role}' in {employee.department}.")
+    _add_task(db, employee_id, "IT", "Create Microsoft 365 Account", is_ai_generated=True,
+              ai_recommendation=f"Mock M365 provisioning request for '{employee.role}'.")
+    _add_task(db, employee_id, "IT", "Create Email Account", is_ai_generated=True,
+              ai_recommendation=f"Mock email account provisioning for {employee.email}.")
+    _add_task(db, employee_id, "IT", "Create VPN Account", is_ai_generated=True,
+              ai_recommendation=f"Mock VPN account request for '{employee.role}'.")
     _add_task(db, employee_id, "IT", "Assign Applications", is_ai_generated=True, ai_recommendation=access["reasoning"],
+              task_type="multi_select", options=get_all_applications(), selected_options=access["applications"])
+    _add_task(db, employee_id, "IT", "Create Application Accounts", is_ai_generated=True,
+              ai_recommendation=(f"Mock account creation for the applications assigned above: "
+                                  f"{', '.join(access['applications'])}."),
               task_type="multi_select", options=get_all_applications(), selected_options=access["applications"])
     _add_task(db, employee_id, "IT", "Asset Allocation", is_ai_generated=True,
               ai_recommendation=f"Recommended assets for '{employee.role}': {', '.join(hardware['asset_list'])}",
