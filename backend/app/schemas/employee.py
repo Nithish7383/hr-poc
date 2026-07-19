@@ -8,13 +8,14 @@ class EmployeeCreate(BaseModel):
     email: str
     department: str
     title: Optional[str] = None
+    ssn_number: Optional[str] = None  # from HRMS, used only for document identity cross-checks -- not exposed via EmployeeOut
     role: Optional[str] = None  # from HRMS directly if provided; AI classifier is fallback-only
     experience_level: Optional[str] = None  # "fresher" | "experienced" -- from HRMS if provided, else derived
     office: Optional[str] = None
     manager: Optional[str] = None
     joining_date: Optional[str] = None
     sync_source: Optional[str] = "manual"
-    documents_submitted: Optional[list[str]] = None  # docs already provided at registration time
+    documents_files: Optional[list[str]] = None  # HRMS-side file paths to sync in and validate -- NOT a completion claim, just raw evidence to fetch
     years_of_experience: Optional[int] = None  # not stored -- only used to derive experience_level if not explicitly set
 
 

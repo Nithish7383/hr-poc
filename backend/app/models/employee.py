@@ -21,6 +21,7 @@ class Employee(Base):
     email = Column(String, nullable=False)
     department = Column(String, nullable=False)
     title = Column(String, nullable=True)
+    ssn_number = Column(String, nullable=True)  # from HRMS, used only to cross-check Government ID Proof document content (see document_identity_fields.json) -- previously silently dropped by hrms_connector
     role = Column(String, nullable=True)          # from HRMS directly if provided; AI classifier is fallback-only (see role_classifier usage in orchestrator)
     experience_level = Column(String, nullable=True)  # "fresher" | "experienced" -- from HRMS if provided, else derived; stored (not recomputed) so any agent can read it directly
     office = Column(String, nullable=True)
@@ -29,7 +30,7 @@ class Employee(Base):
     sync_source = Column(String, default="manual")  # "manual" | "hrms"
     status = Column(String, default="registered")   # registered -> documents_pending -> onboarding -> active -> offboarding -> exited
     activated_at = Column(DateTime, nullable=True)  # set when status flips to 'active' -- lets AI Insights compute real onboarding duration per department
-    documents_submitted = Column(Text, nullable=True)  # JSON-encoded list, as reported by HRMS/manual entry at registration time
+    documents_files = Column(Text, nullable=True)  # JSON-encoded list of HRMS-side file paths (mock_hrms/documents_files) -- consumed once by hrms_document_sync to pull real files in; NOT a completion signal by itself
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -141,19 +142,27 @@ class Report(Base):
 
 
 class EmployeeDocument(Base):
-    """Tracks each required document's status for one employee. Rows are
-    created when Validation first runs and finds a document missing --
-    documents the employee already had at registration never get a row
-    here (they're just implicitly satisfied), only the gaps are tracked."""
+    """Tracks each required document's status for one employee. A row
+    exists for every required document type once Validation has looked
+    at it -- whether it came in via HRMS sync or an email reply, and
+    whether or not a file was actually found for it. Completion is
+    decided by real validated evidence (status == "received", which
+    only happens after HR approves a passed-or-overridden validation
+    task), never by a claim from HRMS alone."""
     __tablename__ = "employee_documents"
 
     id = Column(String, primary_key=True, default=gen_id)
     employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
     document_name = Column(String, nullable=False)
     status = Column(String, default="pending")  # pending | under_review | received
+    source = Column(String, default="email")  # "email" | "hrms_sync" -- where the file actually came from
+    validation_status = Column(String, default="not_run")  # not_run | passed | failed
+    validation_reasoning = Column(Text, nullable=True)  # AI's (or fallback's) explanation, shown to HR on the review task
+    confidence = Column(String, nullable=True)  # high | medium | low -- how much to trust the validation verdict
+    validated_at = Column(DateTime, nullable=True)
     requested_at = Column(DateTime, default=datetime.datetime.utcnow)
     received_at = Column(DateTime, nullable=True)
-    file_path = Column(String, nullable=True)  # where the downloaded attachment is stored, once received
+    file_path = Column(String, nullable=True)  # where the downloaded/synced file is stored, once available
 
 class DocumentRequestEmail(Base):
     """Tracks the real email lifecycle: drafted -> sent -> replied.
@@ -266,6 +275,7 @@ class OnboardingTask(Base):
     options = Column(Text, nullable=True)  # JSON list -- ALL selectable values (full catalog), for multi/single_select only
     selected_options = Column(Text, nullable=True)  # JSON list -- CURRENTLY selected values, editable while status='pending'
     category = Column(String, nullable=True)  # e.g. "compliance" -- marks HR tasks that represent a compliance item
+    document_id = Column(String, ForeignKey("employee_documents.id"), nullable=True)  # set only for task_type == "document_validation" -- links back to the exact document being reviewed
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     decided_at = Column(DateTime, nullable=True)
     escalated_at = Column(DateTime, nullable=True)  # set once an overdue-task escalation email has fired for this task -- one-shot, same pattern as license low-seat alerts

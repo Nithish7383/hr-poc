@@ -25,7 +25,8 @@ def _serialize_tasks(task_list):
          "task_type": t.task_type,
          "options": json.loads(t.options) if t.options else None,
          "selected_options": json.loads(t.selected_options) if t.selected_options else None,
-         "category": t.category}
+         "category": t.category,
+         "document_id": getattr(t, "document_id", None)}
         for t in task_list
     ]
 

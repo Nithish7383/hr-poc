@@ -11,14 +11,15 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 
 
 def _to_employee_kwargs(payload: EmployeeCreate) -> dict:
-    """documents_submitted arrives as a Python list on the schema but is
+    """documents_files arrives as a Python list on the schema but is
     stored as a JSON-encoded string column on the model -- convert here
-    so both create and update stay consistent. years_of_experience is
-    ephemeral (not a DB column) -- used only to derive experience_level
-    if HRMS/manual entry didn't set it explicitly."""
+    so both create and update stay consistent. It's raw evidence to sync
+    and validate, not a completion claim (see hrms_document_sync).
+    years_of_experience is ephemeral (not a DB column) -- used only to
+    derive experience_level if HRMS/manual entry didn't set it explicitly."""
     data = payload.model_dump()
-    docs = data.pop("documents_submitted", None)
-    data["documents_submitted"] = json.dumps(docs) if docs is not None else None
+    docs = data.pop("documents_files", None)
+    data["documents_files"] = json.dumps(docs) if docs is not None else None
     years_exp = data.pop("years_of_experience", None)
     data["experience_level"] = derive_experience_level(
         title=data.get("title"), years_of_experience=years_exp, explicit=data.get("experience_level")

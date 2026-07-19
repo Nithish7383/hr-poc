@@ -15,7 +15,7 @@ from app.models import (
 )
 from app.schemas.employee import TaskDecision, TaskSelectionUpdate, EmailDraftUpdate
 from app.orchestrators.onboarding_orchestrator import (
-    run_onboarding, resume_after_documents, create_document_review_task, resume_after_documents,
+    run_onboarding, resume_after_documents, _create_document_validation_task,
     _draft_and_queue_missing_document_email, draft_and_queue_feedback_email,
 )
 from app.services.track_status import get_all_track_statuses, recompute_employee_status
@@ -57,6 +57,8 @@ def get_document_status(employee_id: str, db: Session = Depends(get_db)):
     return {
         "documents": [
             {"document_name": d.document_name, "status": d.status,
+             "source": d.source, "validation_status": d.validation_status,
+             "confidence": d.confidence, "validation_reasoning": d.validation_reasoning,
              "requested_at": d.requested_at, "received_at": d.received_at}
             for d in docs
         ],
@@ -98,6 +100,7 @@ def get_tasks(employee_id: str, db: Session = Depends(get_db)):
             "options": _json.loads(t.options) if t.options else None,
             "selected_options": _json.loads(t.selected_options) if t.selected_options else None,
             "category": t.category,
+            "document_id": t.document_id,
             "created_at": t.created_at, "decided_at": t.decided_at,
         }
 
@@ -243,17 +246,24 @@ def decide_task(employee_id: str, task_id: str, payload: TaskDecision, db: Sessi
                 except email_client.EmailClientError as e:
                     raise HTTPException(status_code=502, detail=f"Email send failed: {e}")
 
-    if task.task_name == "Review Received Documents" and payload.status == "approved":
-        under_review_docs = db.query(EmployeeDocument).filter(
-            EmployeeDocument.employee_id == employee_id, EmployeeDocument.status == "under_review"
-        ).all()
-        for doc in under_review_docs:
-            doc.status = "received"
-        db.commit()
-        try:
-            resume_after_documents(db, employee_id)
-        except ValueError:
-            pass
+    if task.task_type == "document_validation":
+        doc = db.query(EmployeeDocument).filter(EmployeeDocument.id == task.document_id).first()
+        if doc:
+            if payload.status == "approved":
+                doc.status = "received"
+                doc.received_at = datetime.datetime.utcnow()
+                db.commit()
+                try:
+                    resume_after_documents(db, employee_id)
+                except ValueError:
+                    pass  # other documents still outstanding -- fine, wait for them
+            else:  # rejected
+                doc.status = "pending"
+                db.commit()
+                employee = db.query(Employee).filter(Employee.id == employee_id).first()
+                _draft_and_queue_missing_document_email(
+                    db, employee, [doc.document_name], rejection_reason=doc.validation_reasoning,
+                )
 
     employee_before = db.query(Employee).filter(Employee.id == employee_id).first()
     was_active = employee_before.status == "active" if employee_before else False
@@ -415,8 +425,10 @@ def check_inbox_for_employee(employee_id: str, db: Session = Depends(get_db)):
         employee = db.query(Employee).filter(Employee.id == employee_id).first()
         _draft_and_queue_missing_document_email(db, employee, still_missing)
 
-    if newly_matched:
-        create_document_review_task(db, employee_id, newly_matched, unmatched_count=len(unassigned_attachments))
+    for doc in pending_docs:
+        if doc.document_name in newly_matched:
+            doc.source = "email"
+            _create_document_validation_task(db, employee_id, doc)
 
     return {
         "checked": True, "reply_found": True,
@@ -454,8 +466,12 @@ def match_attachment_to_document(employee_id: str, doc_id: str, attachment_id: s
 
     doc.status = "under_review"
     doc.file_path = attachment_record.file_path
+    doc.source = "email"
     attachment_record.matched_document_name = doc.document_name
     db.commit()
+
+    _create_document_validation_task(db, employee_id, doc)
+
     return {"document_name": doc.document_name, "matched": True}
 
 

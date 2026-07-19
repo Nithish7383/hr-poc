@@ -1,5 +1,5 @@
 {
-  "Government ID Proof": ["id", "pan", "aadhar", "aadhaar", "passport", "govt", "government", "voter"],
+  "Government ID Proof": ["idproof", "govtid", "nationalid", "pan", "aadhar", "aadhaar", "passport", "govt", "government", "voter", "ssn", "socialsecurity", "social_security"],
   "Address Proof": ["address", "utility", "residence", "electricity", "rent"],
   "Educational Certificates": ["degree", "certificate", "education", "marksheet", "diploma", "provisional"],
   "Previous Employment Relieving Letter": ["relieving", "experience", "employment", "resignation"],

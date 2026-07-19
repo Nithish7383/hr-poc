@@ -1,0 +1,7 @@
+{
+  "Government ID Proof": ["name", "ssn_number"],
+  "Address Proof": ["name", "office"],
+  "Bank Account Details": ["name"],
+  "Educational Certificates": ["name"],
+  "Previous Employment Relieving Letter": ["name"]
+}

@@ -42,6 +42,16 @@ def get_required_documents():
     return _load("required_documents.json")
 
 
+def get_document_identity_fields() -> dict:
+    """Maps each required document type to which HRMS-provided employee
+    fields should be cross-checked against its extracted content (e.g.
+    a Government ID Proof should have the employee's SSN in it, not
+    just their name). Used by document_validator_agent so validation
+    checks ALL relevant HRMS data for a document, not just identity by
+    name alone."""
+    return _load("document_identity_fields.json")
+
+
 def get_projects():
     return _load("projects.json")
 

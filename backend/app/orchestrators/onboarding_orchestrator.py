@@ -31,10 +31,13 @@ from app.agents.team_intro_agent import draft_team_intro
 from app.agents.document_email_agent import draft_document_request_email
 from app.agents.welcome_email_agent import draft_welcome_email
 from app.agents.feedback_survey_agent import draft_feedback_request_email
+from app.agents.document_validator_agent import validate_document
+from app.services.document_extraction import extract_text, ExtractionError
+from app.services.hrms_document_sync import sync_employee_documents
 from app import email_client
 from app.models import WelcomeEmail, FeedbackEmail
 from app.config import (
-    get_required_documents, get_roles,
+    get_required_documents, get_roles, get_document_identity_fields,
     get_all_applications, get_all_security_groups, get_all_assets, get_all_project_names,
 )
 
@@ -66,7 +69,7 @@ def _audit(db: Session, employee_id: str, agent: str, action: str, detail: str =
 def _add_task(db: Session, employee_id: str, track: str, task_name: str,
                is_mandatory: bool = True, is_ai_generated: bool = False, ai_recommendation: str = None,
                task_type: str = "simple", options: list = None, selected_options: list = None,
-               category: str = None):
+               category: str = None, document_id: str = None):
     """Every task starts 'pending' -- the Approval Dashboard is the only
     place status ever changes, per the architecture change. Nothing here
     auto-approves anything, even the AI-generated ones.
@@ -84,14 +87,59 @@ def _add_task(db: Session, employee_id: str, track: str, task_name: str,
         options=json.dumps(options) if options is not None else None,
         selected_options=json.dumps(selected_options) if selected_options is not None else None,
         category=category,
+        document_id=document_id,
     ))
     db.commit()
 
 
-def _check_missing_documents(employee: Employee) -> list[str]:
+def _check_missing_documents(db: Session, employee: Employee) -> list[str]:
+    """A required document counts as satisfied only once there's a real,
+    HR-approved EmployeeDocument row for it (status == 'received') --
+    never from a claim alone. Documents still under validation review
+    or awaiting HR approval are NOT yet satisfied, so they don't get
+    re-requested by email while a validation task is pending on them."""
     required = get_required_documents()
-    submitted = json.loads(employee.documents_submitted) if employee.documents_submitted else []
-    return [d for d in required if d not in submitted]
+    existing_docs = {
+        d.document_name: d for d in
+        db.query(EmployeeDocument).filter(EmployeeDocument.employee_id == employee.id).all()
+    }
+    return [
+        d for d in required
+        if d not in existing_docs or existing_docs[d].status not in ("received", "under_review")
+    ]
+
+
+def _sync_and_validate_hrms_documents(db: Session, employee: Employee):
+    """Pulls whatever real files HRMS has for this employee, matches
+    each to a required document type, and runs the same validation +
+    per-task-approval flow email attachments go through. Required doc
+    types with no matched file are left alone here -- they simply fall
+    through to _check_missing_documents' normal missing-document
+    handling right after this runs, no special casing needed."""
+    sync_result = sync_employee_documents(db, employee)
+    matched = sync_result["matched"]
+    if not matched:
+        return
+
+    for doc_name, file_path in matched.items():
+        doc = db.query(EmployeeDocument).filter(
+            EmployeeDocument.employee_id == employee.id, EmployeeDocument.document_name == doc_name
+        ).first()
+        if not doc:
+            doc = EmployeeDocument(employee_id=employee.id, document_name=doc_name)
+            db.add(doc)
+        doc.source = "hrms_sync"
+        doc.file_path = file_path
+        doc.status = "under_review"
+        db.commit()
+        db.refresh(doc)
+
+        _create_document_validation_task(db, employee.id, doc)
+
+    _audit(
+        db, employee.id, "HRMS Document Sync", "Synced documents from HRMS",
+        f"Matched and queued for validation: {', '.join(matched.keys())}",
+    )
 
 
 def run_onboarding(db: Session, employee_id: str):
@@ -115,7 +163,10 @@ def run_onboarding(db: Session, employee_id: str):
 
     _draft_and_queue_welcome_email(db, employee)
 
-    missing_docs = _check_missing_documents(employee)
+    if employee.sync_source == "hrms":
+        _sync_and_validate_hrms_documents(db, employee)
+
+    missing_docs = _check_missing_documents(db, employee)
     if missing_docs:
         for doc_name in missing_docs:
             existing = db.query(EmployeeDocument).filter(
@@ -275,77 +326,125 @@ def _continue_after_validation(db: Session, employee: Employee):
 
 
 def resume_after_documents(db: Session, employee_id: str):
-    """HR confirms documents were received -- resumes a paused pipeline.
-    No email involved (that whole mechanic was removed); this is purely
-    a status check + resume."""
+    """Called after a document_validation task is approved -- checks
+    whether every required document now has a real, HR-approved
+    (status == 'received') EmployeeDocument row, and only then resumes
+    the paused pipeline. A document still 'pending' (missing/rejected)
+    or 'under_review' (validation task not yet decided) keeps the
+    pipeline paused -- this is a per-document check now, not a bulk
+    mark-everything-received, matching the per-task approval model
+    used everywhere else in this app."""
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise ValueError(f"Employee {employee_id} not found")
 
-    pending_docs = db.query(EmployeeDocument).filter(
-        EmployeeDocument.employee_id == employee_id, EmployeeDocument.status == "pending"
+    outstanding = db.query(EmployeeDocument).filter(
+        EmployeeDocument.employee_id == employee_id, EmployeeDocument.status != "received"
     ).all()
-    if not pending_docs:
-        raise ValueError("No pending documents to mark as received for this employee")
-
-    for doc in pending_docs:
-        doc.status = "received"
-        doc.received_at = datetime.datetime.utcnow()
-    db.commit()
-
-    submitted = json.loads(employee.documents_submitted) if employee.documents_submitted else []
-    submitted.extend([d.document_name for d in pending_docs])
-    employee.documents_submitted = json.dumps(submitted)
-    db.commit()
+    if outstanding:
+        raise ValueError(
+            f"Documents still outstanding: {', '.join(d.document_name for d in outstanding)}"
+        )
 
     _mark(db, employee_id, STEP_VALIDATION, "completed")
     _audit(db, employee_id, "Validation Agent", "Documents received",
-           "Missing documents confirmed received; validation completed.")
+           "All required documents validated and approved by HR.")
 
     return _continue_after_validation(db, employee)
 
-def create_document_review_task(db: Session, employee_id: str, auto_matched_names: list[str], unmatched_count: int = 0):
-    note = ""
-    if auto_matched_names:
-        note += f"Automatically matched: {', '.join(auto_matched_names)}. "
-    if unmatched_count > 0:
-        note += (
-            f"{unmatched_count} received file(s) could not be auto-matched (multiple files/documents "
-            f"in play) -- use the matching tool below to assign each file to the correct document "
-            f"before approving."
-        )
-    _add_task(
-        db, employee_id, "HR", "Review Received Documents",
-        is_ai_generated=True, task_type="document_match",
-        ai_recommendation=note or "Documents received via email -- review before approving.",
-    )
-    _audit(db, employee_id, "Document Reply Handler", "Documents received via email", note)
+def _build_identity_fields(employee: Employee, document_name: str) -> dict:
+    """Looks up which HRMS-provided employee fields matter for this
+    document type (document_identity_fields.json) and pulls their
+    current values off the employee record. E.g. Government ID Proof
+    checks name AND ssn_number, not just name -- this is what makes
+    validation check ALL relevant HRMS data against the document, not
+    just identity by name."""
+    field_map = get_document_identity_fields()
+    field_names = field_map.get(document_name, ["name"])  # default to name-only if a doc type isn't configured
+    return {field_name: getattr(employee, field_name, None) for field_name in field_names}
 
-def _draft_and_queue_missing_document_email(db: Session, employee: Employee, missing_docs: list[str]):
+
+def _create_document_validation_task(db: Session, employee_id: str, document: EmployeeDocument):
+    """Runs real content validation on ONE document (whatever its
+    source -- HRMS sync or email reply) and creates its own task, so
+    approval stays per-document like everywhere else in this app rather
+    than one bulk task rubber-stamping a whole batch. Every matched
+    document gets a task regardless of verdict -- a 'passed' verdict
+    still needs a human click, same rule as every other agent here."""
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+
+    try:
+        extracted_text = extract_text(document.file_path)
+    except ExtractionError:
+        extracted_text = ""
+
+    identity_fields = _build_identity_fields(employee, document.document_name) if employee else {}
+    verdict = validate_document(document.document_name, identity_fields, extracted_text)
+    field_matches = verdict.get("field_matches", {})
+
+    document.validation_status = "passed" if (verdict["type_match"] and all(field_matches.values())) else "failed"
+    document.validation_reasoning = verdict["reasoning"]
+    document.confidence = verdict["confidence"]
+    document.validated_at = datetime.datetime.utcnow()
+    db.commit()
+
+    issues_note = f" Issues: {', '.join(verdict['issues'])}" if verdict.get("issues") else ""
+    source_label = "synced from HRMS" if document.source == "hrms_sync" else "received via email"
+    fields_checked_note = f" Checked: {', '.join(field_matches.keys())}." if field_matches else ""
+
+    _add_task(
+        db, employee_id, "HR", f"Validate Document: {document.document_name}",
+        is_ai_generated=True, task_type="document_validation",
+        ai_recommendation=(
+            f"[{source_label}, confidence: {verdict['confidence']}] {verdict['reasoning']}{fields_checked_note}{issues_note}"
+        ),
+        document_id=document.id,
+    )
+    _audit(
+        db, employee_id, "Document Validator Agent",
+        f"Document validation {document.validation_status}: {document.document_name}",
+        verdict["reasoning"] + issues_note,
+    )
+
+
+
+
+
+def _draft_and_queue_missing_document_email(
+    db: Session, employee: Employee, missing_docs: list[str], rejection_reason: str = None,
+):
     """Drafts (via Ollama) and stages an HR-approval email task for the
-    given missing documents. Used both on initial Validation (first
-    request) and after a partial reply (follow-up request for whatever
-    is still missing) -- same mechanism, reusable, so the request/reply
-    loop is self-sustaining until everything required is received."""
+    given missing documents. Used on initial Validation (first request),
+    after a partial reply (follow-up request for whatever is still
+    missing), and after a document_validation task is rejected (in
+    which case rejection_reason carries the validator's explanation so
+    the employee can be told what was wrong) -- same mechanism, reusable,
+    so the request/reply loop is self-sustaining until everything
+    required is received."""
     existing_draft = db.query(DocumentRequestEmail).filter(
         DocumentRequestEmail.employee_id == employee.id, DocumentRequestEmail.status == "drafted"
     ).first()
     if existing_draft:
         return  # already have an unsent draft awaiting HR approval -- don't duplicate
-    draft = draft_document_request_email(employee.name, missing_docs)
+    draft = draft_document_request_email(employee.name, missing_docs, rejection_reason=rejection_reason)
     email_record = DocumentRequestEmail(
         employee_id=employee.id, subject=draft["subject"], body=draft["body"], status="drafted",
     )
     db.add(email_record)
     db.commit()
 
+    note = f"Drafted for missing: {', '.join(missing_docs)}."
+    if rejection_reason:
+        note += f" Re-requested after validation rejection: {rejection_reason}"
+    note += " Review and approve to send."
+
     _add_task(
         db, employee.id, "HR", "Missing Document Request Email",
         is_ai_generated=True, task_type="email_draft",
-        ai_recommendation=f"Drafted for missing: {', '.join(missing_docs)}. Review and approve to send.",
+        ai_recommendation=note,
     )
     _audit(db, employee.id, "Validation Agent", "Document request email drafted",
-           f"Missing: {', '.join(missing_docs)}")
+           f"Missing: {', '.join(missing_docs)}" + (f" (rejected: {rejection_reason})" if rejection_reason else ""))
 
 
 def _draft_and_queue_welcome_email(db: Session, employee: Employee):

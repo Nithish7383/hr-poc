@@ -11,12 +11,14 @@ the mapping logic and field names are the only things that change.
 import json
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 app = FastAPI(title="Mock HRMS")
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 NEW_HIRES_FILE = os.path.join(FIXTURES_DIR, "new_hires.json")
 EXITS_FILE = os.path.join(FIXTURES_DIR, "exits.json")
+MOCK_EMPLOYEE_DOCS_DIR = os.path.join(os.path.dirname(__file__), "mock_employee_docs")
 
 
 def _load(path):
@@ -65,6 +67,19 @@ def reset_fixtures():
             r["synced"] = False
         _save(path, records)
     return {"reset": True}
+
+
+@app.get("/hrms/employees/{hrms_employee_id}/documents/{filename}")
+def get_employee_document(hrms_employee_id: str, filename: str):
+    """Serves a single document file for an employee, simulating a real
+    HRMS's document-store API. Deliberately tolerant: a missing file
+    404s cleanly rather than crashing the service -- backend sync code
+    treats a 404 the same way it would treat a real HRMS's occasional
+    missing file, not as a fatal error."""
+    path = os.path.join(MOCK_EMPLOYEE_DOCS_DIR, hrms_employee_id, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return FileResponse(path)
 
 
 @app.get("/")
