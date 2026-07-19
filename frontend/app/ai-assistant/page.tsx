@@ -3,18 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../../lib/useAuth";
-// Inline fallback for HrAssistantWidget to avoid missing-module errors.
-// Keep this lightweight; the real widget can be placed in ./HrAssistantWidget.tsx
-const HrAssistantWidget: React.FC = () => {
-  return (
-    <div aria-hidden="true" style={{padding: 8, border: `1px solid ${T.border}`, borderRadius: 6}}>
-      HR Assistant (widget placeholder)
-    </div>
-  );
-};
-
-// ... ungal nav icons list-la, enga venumo anga:
-<HrAssistantWidget />
 import Sidebar from "../components/Sidebar";
 
 /* ============================================================
@@ -49,6 +37,16 @@ type ChatMessage = {
   content: string;
   sources?: ChatSource[];
 };
+
+async function ingestDocuments(): Promise<void> {
+  const res = await fetch(`${HR_ASSISTANT_BASE_URL}/ingest`, {
+    method: "POST",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Ingest failed (${res.status})`);
+  }
+}
 
 async function askAssistant(
   employeeId: string,
@@ -92,8 +90,41 @@ function SourcePill({ source }: { source: ChatSource }) {
       }}
       title={`chunk: ${source.chunk_id}`}
     >
+      <span
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: "50%",
+          background: T.blue,
+          flexShrink: 0,
+        }}
+      />
       {source.document}
     </span>
+  );
+}
+
+function Avatar({ isUser }: { isUser: boolean }) {
+  return (
+    <div
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: "50%",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 11.5,
+        fontWeight: 700,
+        letterSpacing: 0.2,
+        background: isUser ? T.border : T.navy,
+        color: isUser ? T.text : "#fff",
+      }}
+      aria-hidden="true"
+    >
+      {isUser ? "You" : "HR"}
+    </div>
   );
 }
 
@@ -102,35 +133,82 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div
       style={{
-        alignSelf: isUser ? "flex-end" : "flex-start",
-        maxWidth: "78%",
         display: "flex",
-        flexDirection: "column",
-        gap: 6,
+        flexDirection: isUser ? "row-reverse" : "row",
+        alignItems: "flex-start",
+        gap: 10,
+        alignSelf: isUser ? "flex-end" : "flex-start",
+        maxWidth: "85%",
       }}
     >
+      <Avatar isUser={isUser} />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+        <div
+          style={{
+            background: isUser ? T.navy : "#fff",
+            color: isUser ? "#fff" : T.text,
+            border: isUser ? "none" : `1px solid ${T.border}`,
+            padding: "11px 15px",
+            borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+            fontSize: 14,
+            lineHeight: 1.55,
+            whiteSpace: "pre-wrap",
+            boxShadow: isUser
+              ? "0 1px 2px rgba(13, 23, 48, 0.16)"
+              : "0 1px 2px rgba(17, 24, 39, 0.04)",
+          }}
+        >
+          {message.content}
+        </div>
+
+        {!isUser && message.sources && message.sources.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {message.sources.map((s) => (
+              <SourcePill key={s.chunk_id} source={s} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <Avatar isUser={false} />
       <div
         style={{
-          background: isUser ? T.navy : "#fff",
-          color: isUser ? "#fff" : T.text,
-          border: isUser ? "none" : `1px solid ${T.border}`,
-          padding: "10px 14px",
-          borderRadius: isUser ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-          fontSize: 14,
-          lineHeight: 1.5,
-          whiteSpace: "pre-wrap",
+          background: "#fff",
+          border: `1px solid ${T.border}`,
+          borderRadius: "14px 14px 14px 4px",
+          padding: "12px 16px",
+          display: "flex",
+          gap: 4,
+          alignItems: "center",
         }}
       >
-        {message.content}
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: T.muted,
+              opacity: 0.5,
+              animation: `hrAssistantPulse 1.2s ease-in-out ${i * 0.15}s infinite`,
+            }}
+          />
+        ))}
       </div>
-
-      {!isUser && message.sources && message.sources.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {message.sources.map((s) => (
-            <SourcePill key={s.chunk_id} source={s} />
-          ))}
-        </div>
-      )}
+      <style>{`
+        @keyframes hrAssistantPulse {
+          0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+          40% { opacity: 0.9; transform: translateY(-2px); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -147,9 +225,27 @@ export default function HrAssistantPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Ingest documents once on page load so the knowledge base
+  // exists before the first /chat call.
+  useEffect(() => {
+    async function initializeAssistant() {
+      try {
+        await ingestDocuments();
+        setReady(true);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to initialize HR Assistant.");
+      }
+    }
+
+    initializeAssistant();
+  }, []);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -158,6 +254,11 @@ export default function HrAssistantPage() {
   async function handleSend() {
     const question = input.trim();
     if (!question || loading) return;
+
+    if (!ready) {
+      setError("HR Assistant is still loading. Please wait...");
+      return;
+    }
 
     setError(null);
     setMessages((prev) => [...prev, { role: "user", content: question }]);
@@ -182,30 +283,73 @@ export default function HrAssistantPage() {
     if (e.key === "Enter") handleSend();
   }
 
+  const suggestions = [
+    "How many casual leaves do I get?",
+    "What documents do I need to submit?",
+    "How do I request remote work?",
+  ];
+
   return (
     <Sidebar>
       <div style={{ minHeight: "100vh", background: T.bg, padding: "26px 32px" }}>
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11, letterSpacing: 1, color: T.amber, fontWeight: 700 }}>
-            HR SELF-SERVICE
+        {/* Header */}
+        <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              background: T.navy,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+            aria-hidden="true"
+          >
+            <span style={{ color: T.amber, fontSize: 17, fontWeight: 700 }}>HR</span>
           </div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: "4px 0 6px", color: T.text }}>
-            AI HR Assistant
-          </h1>
-          <div style={{ fontSize: 13.5, color: T.muted }}>
-            Ask about leave, policy, benefits, and other HR questions.
+
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: 1, color: T.amber, fontWeight: 700 }}>
+              HR SELF-SERVICE
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, margin: "2px 0 4px", color: T.text }}>
+              AI HR Assistant
+            </h1>
+            <div style={{ fontSize: 13.5, color: T.muted }}>
+              Ask about leave, policy, benefits, and other HR questions.
+            </div>
+          </div>
+
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: ready ? "#22a06b" : T.amber,
+                transition: "background 0.2s ease",
+              }}
+            />
+            <span style={{ fontSize: 12.5, color: T.muted }}>
+              {ready ? "Assistant ready" : "Setting up…"}
+            </span>
           </div>
         </div>
 
+        {/* Chat card */}
         <div
           style={{
             background: "#fff",
             border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            maxWidth: 720,
+            borderRadius: 12,
+            maxWidth: 760,
             display: "flex",
             flexDirection: "column",
-            height: "65vh",
+            height: "68vh",
+            boxShadow: "0 1px 3px rgba(17, 24, 39, 0.05), 0 8px 24px rgba(17, 24, 39, 0.04)",
+            overflow: "hidden",
           }}
         >
           {/* Thread */}
@@ -213,15 +357,79 @@ export default function HrAssistantPage() {
             style={{
               flex: 1,
               overflowY: "auto",
-              padding: 20,
+              padding: 22,
               display: "flex",
               flexDirection: "column",
-              gap: 14,
+              gap: 16,
             }}
           >
             {messages.length === 0 && !loading && (
-              <div style={{ fontSize: 13, color: T.muted, margin: "auto" }}>
-                Ask a question to get started — e.g. "How many casual leaves do employees get?"
+              <div
+                style={{
+                  margin: "auto",
+                  textAlign: "center",
+                  maxWidth: 380,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: T.bg,
+                    border: `1px solid ${T.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: T.navy,
+                  }}
+                >
+                  HR
+                </div>
+
+                <div style={{ fontSize: 13.5, color: T.muted, lineHeight: 1.5 }}>
+                  {ready
+                    ? "Ask a question to get started, or try one of these:"
+                    : "Setting up the HR Assistant…"}
+                </div>
+
+                {ready && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+                    {suggestions.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setInput(s)}
+                        style={{
+                          background: T.bg,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 8,
+                          padding: "9px 14px",
+                          fontSize: 13,
+                          color: T.text,
+                          textAlign: "left",
+                          cursor: "pointer",
+                          transition: "border-color 0.15s ease, background 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = T.blue;
+                          e.currentTarget.style.background = "#fff";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = T.border;
+                          e.currentTarget.style.background = T.bg;
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -229,14 +437,22 @@ export default function HrAssistantPage() {
               <MessageBubble key={i} message={m} />
             ))}
 
-            {loading && (
-              <div style={{ alignSelf: "flex-start", fontSize: 13, color: T.muted }}>
-                Thinking…
-              </div>
-            )}
+            {loading && <TypingIndicator />}
 
             {error && (
-              <div style={{ alignSelf: "flex-start", fontSize: 13, color: T.red }}>{error}</div>
+              <div
+                style={{
+                  alignSelf: "flex-start",
+                  fontSize: 13,
+                  color: T.red,
+                  background: "#fdf0ee",
+                  border: "1px solid #f6d3cd",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                }}
+              >
+                {error}
+              </div>
             )}
 
             <div ref={threadEndRef} />
@@ -246,9 +462,10 @@ export default function HrAssistantPage() {
           <div
             style={{
               display: "flex",
-              gap: 8,
-              padding: 14,
+              gap: 10,
+              padding: 16,
               borderTop: `1px solid ${T.border}`,
+              background: "#fbfbfc",
             }}
           >
             <input
@@ -256,30 +473,42 @@ export default function HrAssistantPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask a question"
-              disabled={loading}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              placeholder={ready ? "Ask a question…" : "Loading…"}
+              disabled={loading || !ready}
+              // colorScheme + explicit color/background override Tailwind's
+              // preflight `color-scheme: light dark`, which otherwise makes
+              // the browser render native input text/caret in white on
+              // OS dark-mode, invisible against this input's white background.
               style={{
+                colorScheme: "light",
                 flex: 1,
-                border: `1px solid ${T.border}`,
+                border: `1px solid ${inputFocused ? T.blue : T.border}`,
                 borderRadius: 8,
-                padding: "9px 12px",
+                padding: "10px 13px",
                 fontSize: 14,
                 outline: "none",
+                background: "#fff",
+                color: T.text,
+                boxShadow: inputFocused ? `0 0 0 3px rgba(59, 111, 224, 0.12)` : "none",
+                transition: "border-color 0.15s ease, box-shadow 0.15s ease",
               }}
             />
             <button
               onClick={handleSend}
-              disabled={loading || !input.trim()}
+              disabled={loading || !ready || !input.trim()}
               style={{
                 background: T.navy,
                 color: "#fff",
                 border: "none",
                 borderRadius: 8,
-                padding: "9px 18px",
+                padding: "10px 20px",
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-                opacity: loading || !input.trim() ? 0.6 : 1,
+                cursor: loading || !ready || !input.trim() ? "not-allowed" : "pointer",
+                opacity: loading || !ready || !input.trim() ? 0.5 : 1,
+                transition: "opacity 0.15s ease",
               }}
             >
               Send
