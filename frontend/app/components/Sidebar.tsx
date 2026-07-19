@@ -58,6 +58,15 @@ function ApprovalsIcon({ className }: { className?: string }) {
   );
 }
 
+function TrainingIcon({ className }: { className?: string }) {   // ← ADD THIS
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z" />
+      <path d="M6 12v5c0 1.66 2.69 3 6 3s6-1.34 6-3v-5" />
+    </svg>
+  );
+}
+
 function AiIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -95,6 +104,7 @@ const menuBeforeAssistant = [
   { href: "/onboarding-tracker", label: "Onboarding Tracker", icon: OnboardingIcon },
   { href: "/offboarding-tracker", label: "Offboarding Tracker", icon: OffboardingIcon },
   { href: "/approvals", label: "Approval Dashboard", icon: ApprovalsIcon },
+  { href: "/training", label: "Training & Learning", icon: TrainingIcon },
   { href: "/ai-insights", label: "AI Insights", icon: AiIcon },
 ];
 
