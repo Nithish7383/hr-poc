@@ -67,17 +67,6 @@ function CloseIcon({ className }: { className?: string }) {
    Small building blocks
 ============================================================ */
 
-function SourcePill({ source }: { source: ChatSource }) {
-  return (
-    <span
-      title={`chunk: ${source.chunk_id}`}
-      className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-500"
-    >
-      {source.document}
-    </span>
-  );
-}
-
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   return (
@@ -91,14 +80,6 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       >
         {message.content}
       </div>
-
-      {!isUser && message.sources && message.sources.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {message.sources.map((s) => (
-            <SourcePill key={s.chunk_id} source={s} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -243,7 +224,7 @@ export default function HrAssistantWidget({ collapsed = false }: { collapsed?: b
             onKeyDown={handleKeyDown}
             placeholder="Ask a question"
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-gray-400"
           />
           <button
             onClick={handleSend}

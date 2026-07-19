@@ -46,7 +46,9 @@ const STEP_ICON: Record<string, React.ReactNode> = {
   "Validation": <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
   "HR Track": <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />,
   "IT Track": <path d="M4 16V6a2 2 0 012-2h12a2 2 0 012 2v10m-16 0h16m-16 0l-2 4h20l-2-4" />,
-  "Delivery Track": <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM17.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />,
+  // Changed from a delivery truck icon to a briefcase/manager icon,
+  // since "Delivery Track" maps to the Manager track under the hood.
+  "Delivery Track": <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2M4 7h16v11a2 2 0 01-2 2H6a2 2 0 01-2-2V7zM4 12h16" />,
 };
 
 const POLL_INTERVAL_MS = 3000;
