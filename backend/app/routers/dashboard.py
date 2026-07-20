@@ -9,6 +9,7 @@ it here anymore.
 compliance_completion_pct likewise combines category="compliance" rows
 from both task tables, matching what the Compliance Dashboard shows.
 """
+from app.models import EmployeeDocument
 from app import database
 import datetime
 from fastapi import APIRouter, Depends
@@ -168,6 +169,15 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         .group_by(Employee.role)
         .all()
     )
+    pending_documents = (
+        db.query(distinct(EmployeeDocument.employee_id))
+        .join(Employee, Employee.id == EmployeeDocument.employee_id)
+        .filter(
+            Employee.status == "onboarding",
+            EmployeeDocument.status.in_(["pending", "under_review"])
+        )
+        .count()
+    )
 
     recent_activity = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(10).all()
 
@@ -175,12 +185,13 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         "total_employees": total_employees,
         "total_onboarded": total_onboarded,
         "total_offboarded": total_offboarded,
-        "onboarded_today": onboarded_today,
-        "offboarded_today": offboarded_today,
         "pending_onboarding": pending_onboarding,
         "pending_offboarding": pending_offboarding,
-        # "pending_onboarding_hr_it": pending_onboarding_tasks_hr_it,
         "pending_approvals": pending_approvals,
+        "onboarded_today": onboarded_today,
+        "offboarded_today": offboarded_today,
+        "pending_documents": pending_documents,
+        # "pending_onboarding_hr_it": pending_onboarding_tasks_hr_it,
         "high_risk_employees": high_risk_employees,
         "compliance_completion_pct": compliance_completion_pct,
         "department_distribution": [{"name": d or "Unassigned", "count": c} for d, c in department_rows],
