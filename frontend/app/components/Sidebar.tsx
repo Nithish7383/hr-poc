@@ -75,6 +75,16 @@ function TrainingIcon({ className }: { className?: string }) {   // ← ADD THIS
   );
 }
 
+function ManagerIIntroductionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4z" />
+      <path d="M6 20v-1c0-2.21 3.58-4 6-4s6 1.79 6 4v1" />
+      <path d="M2 12h4" />
+    </svg>
+  );
+}
+
 function AiIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -114,8 +124,43 @@ const menuBeforeAssistant = [
   { href: "/approvals", label: "Approval Dashboard", icon: ApprovalsIcon },
   { href: "/reports", label: "Reports", icon: ReportsIcon},
   { href: "/training", label: "Training & Learning", icon: TrainingIcon },
+  { href: "/manager-introduction", label:" Manager Introduction", icon:ManagerIIntroductionIcon},
+  { href: "/scheduleinduction", label: "Schedule Induction", icon: ScheduleInductionIcon },
+  { href: "/teamintroduction", label: "Team Introduction", icon: TeamIntroductionIcon},
+  { href: "/firstdaychecklist", label: "First Day Checklist", icon: FirstDayChecklistIcon},
   { href: "/ai-insights", label: "AI Insights", icon: AiIcon },
 ];
+
+function ScheduleInductionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v1" />
+      <rect x="3" y="8" width="18" height="11" rx="2" />
+      <path d="M16 3v5" />
+      <path d="M8 3v5" />
+    </svg>
+  );
+}
+
+function TeamIntroductionIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4z" />
+      <path d="M6 20v-1c0-2.21 3.58-4 6-4s6 1.79 6 4v1" />
+      <path d="M2 12h4" />
+    </svg>
+  );
+}
+
+function FirstDayChecklistIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 12l2 2 4-4" />
+      <path d="M4 19h16" />
+      <path d="M4 5h8v6H4z" />
+    </svg>
+  );
+}
 
 const menuAfterAssistant = [
   { href: "/compliance", label: "Compliance Dashboard", icon: ComplianceIcon },

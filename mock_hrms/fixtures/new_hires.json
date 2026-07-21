@@ -2,7 +2,7 @@
   {
     "hrms_employee_id": "EMP-1001",
     "full_name": "Michael Turner",
-    "work_email": "michael.turner@example.com",
+    "work_email": "havikeerthu@gmail.com",
     "department": "Legal",
     "job_title": "Senior Attorney",
     "role": "Attorney",
@@ -49,6 +49,9 @@
       "../mock_employee_docs/EMP-1002/Rachel_Bennett_OfferLetter.pdf",
       "../mock_employee_docs/EMP-1002/Rachel_Bennett_Resume.pdf",
       "../mock_employee_docs/EMP-1002/Rachel_Bennett_BankDetails.pdf",
+      "../mock_employee_docs/EMP-1002/Rachel_Bennett_AddressProof.pdf",
+      "../mock_employee_docs/EMP-1002/Rachel_Bennett_EducationalCertificate.pdf",
+      "../mock_employee_docs/EMP-1002/Rachel_Bennett_RelievingLetter.pdf",
       "../mock_employee_docs/EMP-1002/Rachel_Bennett_SSN_Scanned.pdf"
     ],
     "synced": true

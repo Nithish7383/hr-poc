@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api } from "../../../lib/api";
+import { api, API_BASE } from "../../../lib/api";
 import { useAuth } from "../../../lib/useAuth";
-
 
 function initials(name: string) {
   return (name || "?")
@@ -14,7 +13,6 @@ function initials(name: string) {
     .join("");
 }
 
-// --- Default email draft builder --------------------------------------------
 function parseMissingDocsFromRecommendation(rec: string): string[] {
   if (!rec) return [];
   const match = rec.match(/missing:\s*([^.]+)\./i);
@@ -38,6 +36,20 @@ function buildDefaultEmailDraft(task: any, employeeName?: string | null) {
   return { subject, body };
 }
 
+// Per the OpenAPI spec, task_type "email_draft" covers three distinct kinds
+// that use different backend endpoints: Welcome Email (outbound only, no
+// reply expected), Missing Document Request Email (checked via
+// /documents/check-inbox), and Onboarding Feedback Request (checked via the
+// separate /feedback/check-inbox). Routed by task_name since that's the only
+// signal we have to distinguish them.
+function getEmailTaskKind(task: any): "welcome" | "missing_docs" | "feedback" | "other" {
+  const name = (task.task_name || "").toLowerCase();
+  if (name.includes("feedback")) return "feedback";
+  if (name.includes("missing") || name.includes("document")) return "missing_docs";
+  if (name.includes("welcome")) return "welcome";
+  return "other";
+}
+
 function normalizeTasks(rawTasks: any): any[] {
   if (Array.isArray(rawTasks)) return rawTasks;
   if (rawTasks && typeof rawTasks === "object") {
@@ -48,51 +60,31 @@ function normalizeTasks(rawTasks: any): any[] {
   return [];
 }
 
-const HR_KEYWORDS = [
-  "aadhaar", "pan card", "education", "offer letter", "employment", "passport",
-  "government id", "relieving", "hr portal", "hr document", "background check",
-  "security clearance", "nda", "confidentiality", "access badge", "security training",
-  "police verification", "reference check", "security token", "clearance",
-];
-const IT_KEYWORDS = [
-  "laptop", "vpn", "jetbrains", "ide", "admin panel", "building access",
-  "workstation", "license", "hardware", "software", "asset allocation", "asset",
-  "assign application", "application access", "app access", "corporate email account",
-  "email account setup", "outlook", "teams", "sharepoint", "onedrive", "monitor",
-  "dock", "headset", "mobile device", "provision", "system access", "erp",
-  "time entry", "billing system", "create user account", "user account",
-  "account creation", "user id",
-];
-const DELIVERY_KEYWORDS = [
-  "team assignment", "onboarding track", "buddy", "mentor", "manager",
-  "delivery team", "project allocation",
-];
-
 type StageKey = "hr" | "it" | "delivery";
 type WorkflowType = "onboarding" | "offboarding";
 
-function matchesAny(name: string, keywords: string[]) {
-  return keywords.some((k) => name.includes(k));
-}
-
 function classifyStage(t: any): StageKey {
   const group = (t._roleGroup || "").toLowerCase();
-  if (group === "hr" || group === "security") return "hr";
-  if (group === "it") return "it";
+  // "security" tasks (Assign Security Groups, Ethical Wall Assignment,
+  // Privileged Access Review) are folded into the IT stage. See ROLE_STAGE_MAP
+  // below for the matching permission fix that lets a Security-role user
+  // actually edit them.
+  if (group === "hr") return "hr";
+  if (group === "it" || group === "security") return "it";
   if (group === "manager" || group === "delivery") return "delivery";
+
   if (t.task_type === "email_draft") return "hr";
+
   const explicit = (t.stage || t.category || "").toLowerCase();
   if (explicit) {
-    if (explicit.includes("hr") || explicit.includes("document") || explicit.includes("security") || explicit.includes("clearance"))
+    if (explicit.includes("hr") || explicit.includes("document"))
       return "hr";
-    if (explicit.includes("it") || explicit.includes("provision")) return "it";
-    if (explicit.includes("manager") || explicit.includes("team") || explicit.includes("delivery"))
+    if (explicit.includes("it") || explicit.includes("provision") || explicit.includes("system") || explicit.includes("tech") || explicit.includes("security") || explicit.includes("clearance"))
+      return "it";
+    if (explicit.includes("manager") || explicit.includes("team") || explicit.includes("delivery") || explicit.includes("project"))
       return "delivery";
   }
-  const name = (t.task_name || "").toLowerCase();
-  if (matchesAny(name, DELIVERY_KEYWORDS)) return "delivery";
-  if (matchesAny(name, IT_KEYWORDS)) return "it";
-  if (matchesAny(name, HR_KEYWORDS)) return "hr";
+
   if (typeof window !== "undefined") {
     console.warn(`[classifyStage] Unmatched task, defaulting to HR:`, t.task_name, t);
   }
@@ -105,8 +97,9 @@ const STAGES: { key: StageKey; eyebrow: string; title: string }[] = [
   { key: "delivery", eyebrow: "STAGE 3 · TEAM ASSIGNMENT", title: "Delivery Team" },
 ];
 
+// IT stage is jointly approved by IT and Security.
 const STAGE_APPROVER: Record<StageKey, string> = {
-  hr: "HR", it: "IT", delivery: "Manager",
+  hr: "HR", it: "IT/Security", delivery: "Manager",
 };
 
 type StageDisplay = {
@@ -124,43 +117,49 @@ function getStageDisplay(
   const currentStage =
     (r === "hr" && stage === "hr") ||
     (r === "it" && stage === "it") ||
+    (r === "security" && stage === "it") ||
     ((r === "manager" || r === "delivery") && stage === "delivery");
+
+  // Stage selector NEVER shows "Locked" text - always shows approval status
   if (currentStage) {
     if (status === "completed") {
       return { text: "Approved", textColor: "text-green-600", circleColor: "bg-green-600 text-white" };
     }
     return { text: `Waiting for ${STAGE_APPROVER[stage]} Approval`, textColor: "text-red-600", circleColor: "bg-red-500 text-white" };
   }
+
   if (status === "completed") {
     return { text: "Approved", textColor: "text-green-600", circleColor: "bg-green-600 text-white" };
   }
+
+  // For non-current stages: always show waiting text, never "Locked"
   return { text: `Waiting for ${STAGE_APPROVER[stage]} Approval`, textColor: "text-gray-400", circleColor: "bg-white border-2 border-gray-200 text-gray-400" };
 }
 
-// --- Derive overall status from tasks array ---
 function deriveOverallStatus(item: any): string {
   if (!item) return "Unknown";
-  
+
   const directStatus = item.status || item.approval_status || item.employee_status || item.overall_status;
   if (typeof directStatus === "string" && directStatus.trim()) {
     return directStatus;
   }
-  
-  const tasks = item.tasks;
-  if (!Array.isArray(tasks) || tasks.length === 0) return "Unknown";
-  
+
+  // item.tasks may be the raw grouped object from /onboarding|offboarding/{id}/tasks
+  // (e.g. { HR: [...], IT: [...] }) rather than a flat array -- normalize first.
+  const tasks = normalizeTasks(item.tasks);
+  if (tasks.length === 0) return "Unknown";
+
   const allApproved = tasks.every((t: any) => t.status === "approved" || t.status === "verified");
   const allRejected = tasks.every((t: any) => t.status === "rejected");
   const anyPending = tasks.some((t: any) => t.status === "pending");
-  
+
   if (allApproved) return "Cleared";
   if (allRejected) return "Rejected";
   if (anyPending) return "Pending";
-  
+
   return "In Progress";
 }
 
-// --- Get badge colors based on status value ---
 function getStatusBadgeStyle(status: string | undefined | null): { bg: string; text: string; label: string } {
   const s = (status || "Unknown").toLowerCase().trim();
   switch (s) {
@@ -184,15 +183,16 @@ function getStatusBadgeStyle(status: string | undefined | null): { bg: string; t
   }
 }
 
+// "security" -> "it" so a Security-role user's stage lock resolves to the
+// IT stage (where Security tasks now live) instead of falling through to
+// null (which would lock every stage for them).
 const ROLE_STAGE_MAP: Record<string, StageKey> = {
-  hr: "hr", it: "it", manager: "delivery", delivery: "delivery", "delivery team": "delivery",
+  hr: "hr", it: "it", security: "it", manager: "delivery", delivery: "delivery", "delivery team": "delivery",
 };
-const ADMIN_ROLES = ["admin", "superadmin", "owner"];
 
-function stageForRole(role?: string | null): StageKey | "all" | null {
+function stageForRole(role?: string | null): StageKey | null {
   if (!role) return null;
   const r = role.toLowerCase();
-  if (ADMIN_ROLES.includes(r)) return "all";
   return ROLE_STAGE_MAP[r] ?? null;
 }
 
@@ -234,7 +234,6 @@ function TaskListButton({
   );
 }
 
-// --- Empty State Component (shown when no task is selected) ------------------
 function EmptyTaskPanel({ stageKey }: { stageKey: StageKey }) {
   const messages: Record<StageKey, { icon: string; title: string; desc: string }> = {
     hr: {
@@ -263,12 +262,11 @@ function EmptyTaskPanel({ stageKey }: { stageKey: StageKey }) {
   );
 }
 
-// --- Right column: full task detail ------------------------------------------
 function TaskDetailPanel({
-  employeeId, employeeName, task, workflow, onChanged, locked,
+  employeeId, employeeName, task, workflow, onChanged, roleLocked,
 }: {
   employeeId: string; employeeName?: string | null; task: any;
-  workflow: WorkflowType; onChanged: () => void; locked?: boolean;
+  workflow: WorkflowType; onChanged: () => void; roleLocked?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [selection, setSelection] = useState<string[]>(task.selected_options || []);
@@ -294,11 +292,21 @@ function TaskDetailPanel({
   }, [task.id]);
 
   const isEditable =
-    !locked &&
+    !roleLocked &&
     task.status === "pending" &&
     (task.task_type === "multi_select" || task.task_type === "single_select");
 
-  const emailEditable = !locked && task.status === "pending";
+  // Email actions are onboarding-only -- confirmed via the OpenAPI spec that
+  // there's no /offboarding/.../email-draft or /offboarding/.../check-inbox
+  // route. Task selection/decide DO exist for both workflows, so those stay
+  // workflow-aware below.
+  const emailSupported = workflow === "onboarding";
+  const emailKind = isEmailDraft ? getEmailTaskKind(task) : null;
+  // Welcome Email is outbound-only (no reply flow); Missing Document Request
+  // Email and Onboarding Feedback Request each check a different inbox.
+  const showCheckInbox =
+    isEmailDraft && emailSupported && (emailKind === "missing_docs" || emailKind === "feedback");
+  const emailEditable = !roleLocked && task.status === "pending" && emailSupported;
   const isDecided =
     task.status === "approved" || task.status === "rejected" || task.status === "verified";
 
@@ -307,7 +315,7 @@ function TaskDetailPanel({
   const decideTask = workflow === "onboarding" ? api.decideTask : api.decideOffboardingTask;
 
   async function saveSelection(next: string[]) {
-    if (locked) return;
+    if (roleLocked) return;
     setSelection(next);
     setSaving(true);
     try {
@@ -318,7 +326,7 @@ function TaskDetailPanel({
   }
 
   function toggleOption(option: string) {
-    if (locked) return;
+    if (roleLocked) return;
     if (task.task_type === "single_select") {
       saveSelection([option]);
     } else {
@@ -330,7 +338,7 @@ function TaskDetailPanel({
   }
 
   async function decide(status: "approved" | "rejected") {
-    if (locked) return;
+    if (roleLocked) return;
     setSaving(true);
     try {
       await decideTask(employeeId, task.id, status);
@@ -344,7 +352,9 @@ function TaskDetailPanel({
     if (!emailEditable) return;
     setEmailSaving(true);
     try {
-      await api.updateEmailDraft(employeeId, emailSubject, emailBody);
+      // Generic endpoint -- resolves through the task itself, so it's correct
+      // for all three email_draft kinds (Welcome / Missing Docs / Feedback).
+      await api.updateTaskEmailDraft(employeeId, task.id, emailSubject, emailBody);
       onChanged();
     } finally {
       setEmailSaving(false);
@@ -352,11 +362,12 @@ function TaskDetailPanel({
   }
 
   async function handleCheckInbox() {
-    if (locked) return;
+    if (roleLocked || !showCheckInbox) return;
     setCheckingInbox(true);
     setInboxMessage(null);
     try {
-      const result = await api.checkInbox(employeeId);
+      const checkInboxFn = emailKind === "feedback" ? api.checkFeedbackInbox : api.checkInbox;
+      const result = await checkInboxFn(employeeId);
       const replyFound = result?.replyFound ?? result?.reply_found ?? false;
       if (replyFound) {
         onChanged();
@@ -372,7 +383,6 @@ function TaskDetailPanel({
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 md:p-5">
-      {/* Header: AI Recommended Access + Check Inbox button on the RIGHT */}
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F3F1FB] border border-[#D9CFF5] px-3 py-1 text-xs font-semibold text-[#6D4FC7]">
@@ -380,10 +390,10 @@ function TaskDetailPanel({
             <span className="uppercase tracking-wider">AI Recommended Access</span>
           </span>
         </div>
-        {isEmailDraft && (
+        {showCheckInbox && (
           <button
             onClick={handleCheckInbox}
-            disabled={locked || checkingInbox}
+            disabled={roleLocked || checkingInbox}
             className="rounded-lg border border-[#D9CFF5] bg-[#F3F1FB] px-3 py-1.5 text-xs font-semibold text-[#6D4FC7] hover:bg-[#EEE9FB] transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {checkingInbox ? "Checking..." : "Check Inbox for Reply"}
@@ -397,8 +407,17 @@ function TaskDetailPanel({
           {task.ai_recommendation}
         </div>
       )}
+      {task.task_type === "document_validation" && task.document_id && (
+  <a
+    href={`${API_BASE}/onboarding/${employeeId}/documents/${task.document_id}/file`}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-block mt-1 text-xs font-semibold text-[#6D4FC7] hover:underline"
+  >
+    View Document
+  </a>
+)}
 
-      {/* single_select */}
       {task.task_type === "single_select" && task.options && (
         <div className="mb-3">
           <select
@@ -415,7 +434,6 @@ function TaskDetailPanel({
         </div>
       )}
 
-      {/* multi_select */}
       {task.task_type === "multi_select" && task.options && (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {task.options.map((opt: string) => (
@@ -442,7 +460,12 @@ function TaskDetailPanel({
         </div>
       )}
 
-      {/* email_draft: Subject/Body + Save Edits */}
+      {isEmailDraft && !emailSupported && (
+        <p className="mb-3 text-xs text-amber-600">
+          Email actions (editing, sending, checking replies) aren't available for offboarding tasks yet.
+        </p>
+      )}
+
       {isEmailDraft && (
         <div className="mb-3 space-y-2.5">
           <div>
@@ -482,8 +505,7 @@ function TaskDetailPanel({
         </div>
       )}
 
-      {/* Approve / Reject buttons at bottom */}
-      {!locked && (
+      {!roleLocked && (
         <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
           {task.status !== "rejected" && (
             <button
@@ -513,6 +535,14 @@ function TaskDetailPanel({
           )}
         </div>
       )}
+
+      {roleLocked && (
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-500 text-center">
+            🔒 View only — You don't have permission to edit this stage
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -531,36 +561,69 @@ export default function EmployeeApprovalPage() {
 
   const myStage = useMemo(() => stageForRole(role), [role]);
 
-  function isStageLockedForRole(key: StageKey) {
-    if (myStage === "all") return false;
+  function isStageLockedForRole(key: StageKey): boolean {
+    if (myStage === null) return true;
     return myStage !== key;
   }
 
+  // Fix #3: this page used to build its data by fetching
+  // /approvals/pending/{role} for HR/IT/Manager and filtering client-side by
+  // employee_id. That was lossy (no Security group -> fix #1) and wasteful
+  // (pulled every employee's pending items just to find one). Now it fetches
+  // this employee's full task set directly.
   async function load() {
-    if (!role) return;
     setLoading(true);
     try {
-      let data: any[] = [];
-      if (typeof (api as any).approvalsForEmployee === "function") {
-        data = await (api as any).approvalsForEmployee(employeeId);
-      } else {
-        data = await api.approvalsForRole(role);
+      const [employee, onboardingRes, offboardingRes] = await Promise.all([
+        api.getEmployee(employeeId).catch(() => null),
+        api.onboardingTasks(employeeId).catch(() => null),
+        api.offboardingTasks(employeeId).catch(() => null),
+      ]);
+
+      // Confirmed against EmployeeOut in the spec: name, employee_id, email,
+      // department, role, experience_level.
+      const baseHeader = {
+        employee_id: employeeId,
+        employee_name: employee?.name,
+        emp_id: employee?.employee_id,
+        department: employee?.department,
+        role: employee?.role,
+        experience_level: employee?.experience_level,
+        email: employee?.email,
+      };
+
+      const newItems: any[] = [];
+
+      if (onboardingRes) {
+        newItems.push({
+          ...baseHeader,
+          workflow_type: "onboarding",
+          status: onboardingRes.status || onboardingRes.overall_status,
+          tasks: onboardingRes.tasks, // grouped by role: HR / IT / Security / Manager
+        });
       }
-      const normalized = Array.isArray(data) ? data : data ? [data] : [];
-      setItems(normalized);
+      if (offboardingRes) {
+        newItems.push({
+          ...baseHeader,
+          workflow_type: "offboarding",
+          status: offboardingRes.status || offboardingRes.overall_status,
+          tasks: offboardingRes.tasks,
+        });
+      }
+
+      setItems(newItems);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, [role]);
+  // No longer depends on `role` -- fetching is per-employee now, not
+  // per-approver-role, so there's nothing to re-fetch when role changes.
+  useEffect(() => { load(); }, [employeeId]);
 
-  const employeeItems = useMemo(
-    () => items.filter((item: any) => item.employee_id === employeeId),
-    [items, employeeId]
-  );
-
-  const header = employeeItems[0];
+  // Data is already scoped to this employee; kept as its own memo so the
+  // rest of the component (which reads `employeeItems`) doesn't need to change.
+  const employeeItems = useMemo(() => items, [items]);
 
   const availableWorkflows = useMemo(() => {
     const set = new Set<WorkflowType>(employeeItems.map((i: any) => i.workflow_type));
@@ -585,95 +648,101 @@ export default function EmployeeApprovalPage() {
     return grouped;
   }, [allTasks]);
 
-  // --- FIXED: Compute stage statuses in a single pass to avoid infinite recursion ---
-  const stageStatuses = useMemo(() => {
-    const result: Record<StageKey, "completed" | "pending" | "locked"> = {
-      hr: "pending",
-      it: "locked",
-      delivery: "locked",
+ // Stage completion status based ONLY on that stage's tasks.
+  // A stage stays "Waiting for Approval" until its own tasks are
+  // actually approved/rejected — never auto-marked complete just
+  // because it currently has zero tasks.
+  const stageCompletionStatus = useMemo(() => {
+    const result: Record<StageKey, boolean> = {
+      hr: false,
+      it: false,
+      delivery: false,
     };
 
-    // HR stage: always unlocked. Completed if all HR tasks are approved/verified
+    // HR stage completion
     const hrTasks = tasksByStage.hr;
-    if (hrTasks.length === 0) {
-      result.hr = "completed"; // no tasks = considered done
-    } else {
-      const allHrDone = hrTasks.every(
+    if (hrTasks.length > 0) {
+      result.hr = hrTasks.every(
         (t) => t.status === "approved" || t.status === "verified" || t.status === "rejected"
       );
-      result.hr = allHrDone ? "completed" : "pending";
     }
 
-    // IT stage: locked until HR is completed
-    if (result.hr !== "completed") {
-      result.it = "locked";
-    } else {
-      const itTasks = tasksByStage.it;
-      if (itTasks.length === 0) {
-        result.it = "completed";
-      } else {
-        const allItDone = itTasks.every(
-          (t) => t.status === "approved" || t.status === "verified" || t.status === "rejected"
-        );
-        result.it = allItDone ? "completed" : "pending";
-      }
+    // IT stage completion
+    const itTasks = tasksByStage.it;
+    if (itTasks.length > 0) {
+      result.it = itTasks.every(
+        (t) => t.status === "approved" || t.status === "verified" || t.status === "rejected"
+      );
     }
 
-    // Delivery stage: locked until IT is completed
-    if (result.it !== "completed") {
-      result.delivery = "locked";
-    } else {
-      const deliveryTasks = tasksByStage.delivery;
-      if (deliveryTasks.length === 0) {
-        result.delivery = "completed";
-      } else {
-        const allDeliveryDone = deliveryTasks.every(
-          (t) => t.status === "approved" || t.status === "verified" || t.status === "rejected"
-        );
-        result.delivery = allDeliveryDone ? "completed" : "pending";
-      }
+    // Delivery stage completion
+    const deliveryTasks = tasksByStage.delivery;
+    if (deliveryTasks.length > 0) {
+      result.delivery = deliveryTasks.every(
+        (t) => t.status === "approved" || t.status === "verified" || t.status === "rejected"
+      );
     }
 
     return result;
   }, [tasksByStage]);
 
-  // Helper to get status for a specific stage (now reads from memoized object)
-  function stageStatus(key: StageKey): "completed" | "pending" | "locked" {
-    return stageStatuses[key];
+  // Sequential lock: IT needs HR done, Delivery needs IT done
+  function isStageSequentiallyLocked(key: StageKey): boolean {
+    if (key === "hr") return false;
+    if (key === "it") return !stageCompletionStatus.hr;
+    if (key === "delivery") return !stageCompletionStatus.it;
+    return false;
+  }
+
+  // Stage status for display: completed | pending (never locked for display)
+  function stageDisplayStatus(key: StageKey): "completed" | "pending" {
+    if (stageCompletionStatus[key]) return "completed";
+    return "pending";
+  }
+
+  // Stage status for main panel badge: completed | pending | locked
+  function stageBadgeStatus(key: StageKey): "completed" | "pending" | "locked" {
+    if (stageCompletionStatus[key]) return "completed";
+    if (isStageSequentiallyLocked(key)) return "locked";
+    return "pending";
   }
 
   useEffect(() => { setSelectedStage(null); }, [activeWorkflow]);
 
   useEffect(() => {
     if (selectedStage || employeeItems.length === 0) return;
-    // Auto-select the first non-completed stage
-    const current = STAGES.find((s) => stageStatuses[s.key] !== "completed") || STAGES[STAGES.length - 1];
+    // Auto-select first non-completed stage
+    const current = STAGES.find((s) => !stageCompletionStatus[s.key]) || STAGES[STAGES.length - 1];
     setSelectedStage(current.key);
-  }, [selectedStage, employeeItems, stageStatuses]);
+  }, [selectedStage, employeeItems, stageCompletionStatus]);
 
   useEffect(() => { setSelectedTaskId(null); }, [selectedStage, activeWorkflow]);
 
   const activeStageDef = selectedStage ? STAGES.find((s) => s.key === selectedStage) || null : null;
-  const activeStatus = selectedStage ? stageStatus(selectedStage) : null;
+  const activeDisplayStatus = selectedStage ? stageDisplayStatus(selectedStage) : null;
+  const activeBadgeStatus = selectedStage ? stageBadgeStatus(selectedStage) : null;
   const activeTasks = selectedStage ? tasksByStage[selectedStage] : [];
-  const activeLocked = activeStatus === "locked";
   const activeRoleLocked = selectedStage ? isStageLockedForRole(selectedStage) : false;
   const activeStageIndex = selectedStage ? STAGES.findIndex((s) => s.key === selectedStage) : -1;
+  const activeSequentiallyLocked = selectedStage ? isStageSequentiallyLocked(selectedStage) : false;
 
   const selectedTask = useMemo(
     () => activeTasks.find((t: any) => t.id === selectedTaskId) || null,
     [activeTasks, selectedTaskId]
   );
 
-  // Derive overall status from the header item
+  // Fix #4: header/overallStatus used to come from employeeItems[0]
+  // regardless of which workflow tab was active, so the status badge could
+  // be stuck showing the wrong workflow's status after switching tabs.
+  const header = useMemo(
+    () => employeeItems.find((i: any) => i.workflow_type === activeWorkflow) || employeeItems[0],
+    [employeeItems, activeWorkflow]
+  );
   const overallStatus = useMemo(() => deriveOverallStatus(header), [header]);
-  
-  // Get dynamic badge colors based on the actual status value
   const statusBadge = useMemo(() => getStatusBadgeStyle(overallStatus), [overallStatus]);
 
   return (
     <div className="bg-[#FAFAF9] min-h-screen w-full p-6 flex-1">
-      {/* Top bar */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <p className="uppercase tracking-[0.25em] text-xs text-[#D9A653] font-semibold">
@@ -704,7 +773,6 @@ export default function EmployeeApprovalPage() {
 
       {!loading && header && (
         <>
-          {/* Employee header card */}
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 mb-6">
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#14213D] text-white text-base font-bold shrink-0">
@@ -713,7 +781,7 @@ export default function EmployeeApprovalPage() {
               <div className="mr-auto">
                 <div className="text-xl font-bold text-[#14213D]">{header.employee_name}</div>
                 <div className="text-sm text-gray-500">
-                  {header.employee_id ?? "—"}
+                  {header.emp_id ?? "—"}
                   {header.email ? ` · ${header.email}` : ""}
                 </div>
               </div>
@@ -760,15 +828,15 @@ export default function EmployeeApprovalPage() {
             )}
           </div>
 
-          {/* Stage selector */}
+          {/* Stage selector - NEVER shows "Locked" text */}
           <div className="flex items-center mb-6 flex-wrap">
             {STAGES.map((s, idx) => {
-              const status = stageStatus(s.key);
-              const display = getStageDisplay(s.key, status, role);
-              const locked = status === "locked";
+              const displayStatus = stageDisplayStatus(s.key);
+              const display = getStageDisplay(s.key, displayStatus, role);
               const roleLocked = isStageLockedForRole(s.key);
               const isActive = selectedStage === s.key;
-              const hideHrStatus = role !== "hr" && s.key === "hr";
+              // Connector green if THIS stage is completed
+              const thisStageCompleted = stageCompletionStatus[s.key];
               return (
                 <div key={s.key} className="flex items-center">
                   <button
@@ -780,12 +848,12 @@ export default function EmployeeApprovalPage() {
                     }`}
                   >
                     <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold shrink-0 ${display.circleColor}`}>
-                      {hideHrStatus ? "1" : status === "completed" ? "✓" : idx + 1}
+                      {displayStatus === "completed" ? "✓" : idx + 1}
                     </div>
                     <div>
                       <div className="font-semibold text-[#14213D] text-sm flex items-center gap-1.5 whitespace-nowrap">
                         {s.title}
-                        {(locked || roleLocked) && <span className="text-xs">🔒</span>}
+                        {roleLocked && <span className="text-xs">🔒</span>}
                       </div>
                       <div className={`text-xs whitespace-nowrap ${display.textColor}`}>
                         {display.text}
@@ -794,7 +862,7 @@ export default function EmployeeApprovalPage() {
                   </button>
                   {idx < STAGES.length - 1 && (
                     <div className={`h-0.5 w-8 md:w-16 mx-1.5 rounded-full shrink-0 ${
-                      status === "completed" ? "bg-green-500" : "bg-gray-200"
+                      thisStageCompleted ? "bg-green-500" : "bg-gray-200"
                     }`} />
                   )}
                 </div>
@@ -820,52 +888,57 @@ export default function EmployeeApprovalPage() {
                     </span>
                   )}
                 </h3>
+                {/* Main panel badge: shows Locked for sequentially locked stages */}
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${
-                  activeLocked
-                    ? "bg-gray-100 text-gray-500"
-                    : activeStatus === "completed"
+                  activeBadgeStatus === "completed"
                     ? "bg-green-100 text-green-700"
+                    : activeBadgeStatus === "locked"
+                    ? "bg-gray-100 text-gray-500"
                     : "bg-amber-100 text-amber-700"
                 }`}>
-                  {activeLocked ? "Locked" : activeStatus === "completed" ? "Completed" : "In Progress"}
+                  {activeBadgeStatus === "completed" ? "Completed" : activeBadgeStatus === "locked" ? "Locked" : "In Progress"}
                 </span>
               </div>
 
-              {activeLocked && (
+              {/* Role-based lock message */}
+              {activeRoleLocked && (
                 <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
-                  {activeStageIndex === 0 
-                    ? "This stage will open once previous requirements are met." 
+                  🔒 This stage is view-only for your role. Only <strong>{STAGE_APPROVER[activeStageDef.key]}</strong> can edit and approve tasks here.
+                </div>
+              )}
+
+              {/* Sequential dependency lock message */}
+              {!activeRoleLocked && activeSequentiallyLocked && (
+                <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+                  {activeStageIndex === 0
+                    ? "This stage will open once previous requirements are met."
                     : `This stage opens for editing once ${STAGES[activeStageIndex - 1]?.title} is completed. You can still review what's queued here.`}
                 </div>
               )}
 
-              {/* Master-detail layout */}
               <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-                {/* Left: task list */}
                 <div className="space-y-2">
-                  {activeTasks.length === 0 && (
+                  {activeTasks.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
                       <div className="text-3xl mb-2">📄</div>
                       <p className="text-sm text-gray-500">
-                        {activeStageDef.key === "hr"
-                          ? "Documents submitted by the employee will appear here once available."
-                          : activeLocked 
-                            ? `This stage will unlock once ${STAGES[activeStageIndex - 1]?.title} is completed.`
-                            : "No tasks yet for this stage."}
+                        {activeSequentiallyLocked && !activeRoleLocked
+                          ? `This stage will unlock once ${STAGES[activeStageIndex - 1]?.title} is completed.`
+                          : "No tasks yet for this stage."}
                       </p>
                     </div>
+                  ) : (
+                    activeTasks.map((t: any) => (
+                      <TaskListButton
+                        key={t.id}
+                        task={t}
+                        isSelected={selectedTaskId === t.id}
+                        onSelect={() => setSelectedTaskId(t.id)}
+                      />
+                    ))
                   )}
-                  {activeTasks.map((t: any) => (
-                    <TaskListButton
-                      key={t.id}
-                      task={t}
-                      isSelected={selectedTaskId === t.id}
-                      onSelect={() => setSelectedTaskId(t.id)}
-                    />
-                  ))}
                 </div>
 
-                {/* Right: detail panel */}
                 <div>
                   {!selectedTask && activeStageDef && (
                     <EmptyTaskPanel stageKey={activeStageDef.key} />
@@ -877,7 +950,7 @@ export default function EmployeeApprovalPage() {
                       task={selectedTask}
                       workflow={selectedTask._workflow}
                       onChanged={load}
-                      locked={activeLocked || activeRoleLocked}
+                      roleLocked={activeRoleLocked}
                     />
                   )}
                 </div>

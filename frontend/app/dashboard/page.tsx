@@ -332,10 +332,10 @@ export default function DashboardPage() {
   }
 
   // ---- Values sourced directly from the backend summary payload ----
-  const totalEmployees = Number(summary.total_employees ?? 0);
-  const onboardedToday = Number(summary.onboarded_today ?? 0);
-  const offboardedToday = Number(summary.offboarded_today ?? 0);
-  const pendingOnboarding = Number(summary.pending_onboarding ?? 0);
+  const totalEmployees = Number(summary.total_employees ?? 0) + Number(summary.pending_documents ?? 0);
+  const onboardedToday = Number(summary.total_onboarded ?? 0);
+  const offboardedToday = Number(summary.total_offboarded ?? 0);
+  const pendingOnboarding = Number(summary.pending_onboarding ?? 0) + Number(summary.pending_documents ?? 0);
   const pendingOffboarding = Number(summary.pending_offboarding ?? 0);
   // Backend already computes this total (IT + HR combined) — use it directly
   // instead of re-deriving it on the frontend.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useAuth } from "../../lib/useAuth";
 
 /* ============================================================
@@ -67,18 +68,33 @@ function CloseIcon({ className }: { className?: string }) {
    Small building blocks
 ============================================================ */
 
+// Compact prose classes so headings/lists/bold render nicely inside
+// the narrow chat bubble instead of using default browser spacing.
+const MARKDOWN_CLASSES =
+  "prose prose-sm max-w-none " +
+  "prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 " +
+  "prose-headings:mt-2 prose-headings:mb-1.5 prose-headings:text-[15px] " +
+  "prose-strong:font-semibold prose-strong:text-inherit " +
+  "prose-p:leading-relaxed prose-li:leading-relaxed";
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex max-w-[82%] flex-col gap-1.5 ${isUser ? "self-end" : "self-start"}`}>
       <div
-        className={`whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? "rounded-br-sm bg-[#101d38] text-white"
+            ? "whitespace-pre-wrap rounded-br-sm bg-[#101d38] text-white"
             : "rounded-bl-sm border border-gray-200 bg-white text-gray-900"
         }`}
       >
-        {message.content}
+        {isUser ? (
+          message.content
+        ) : (
+          <div className={MARKDOWN_CLASSES}>
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -224,12 +240,7 @@ export default function HrAssistantWidget({ collapsed = false }: { collapsed?: b
             onKeyDown={handleKeyDown}
             placeholder="Ask a question"
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400"
-            // Tailwind's preflight sets `color-scheme: light dark` on the
-            // root, which makes the browser render native input text/caret
-            // in white whenever the OS is in dark mode -- invisible against
-            // this input's white background. Force light mode explicitly.
-            style={{ colorScheme: "light" }}
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400"
           />
           <button
             onClick={handleSend}

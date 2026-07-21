@@ -46,7 +46,9 @@ const STEP_ICON: Record<string, React.ReactNode> = {
   "Validation": <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
   "HR Track": <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />,
   "IT Track": <path d="M4 16V6a2 2 0 012-2h12a2 2 0 012 2v10m-16 0h16m-16 0l-2 4h20l-2-4" />,
-  "Delivery Track": <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM17.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />,
+  // Changed from a delivery truck icon to a briefcase/manager icon,
+  // since "Delivery Track" maps to the Manager track under the hood.
+  "Delivery Track": <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2M4 7h16v11a2 2 0 01-2 2H6a2 2 0 01-2-2V7zM4 12h16" />,
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -57,6 +59,12 @@ function formatTime(ts: string) {
 
 function getEmployeeCode(e: any): string {
   return e.employeeId ?? e.employee_id ?? e.empId ?? e.emp_id ?? e.employeeCode ?? e.employee_code ?? e.code ?? e.id ?? "—";
+}
+
+function formatDocumentSource(source: string): string {
+  if (source === "hrms_sync") return "synced from HRMS";
+  if (source === "email") return "via email";
+  return source;
 }
 
 function StepIcon({ step, color, size = 18 }: { step: string; color: string; size?: number }) {
@@ -385,6 +393,12 @@ export default function OnboardingTrackerDetailPage() {
                 {documentInfo.documents.map((d: any, idx: number) => (
                   <div key={idx} style={{ fontSize: 13, color: d.status === "received" ? "#16a34a" : "#c2410c" }}>
                     {d.status === "received" ? "✅" : "⏳"} {d.document_name} — {d.status}
+                    {d.source && (
+                      <span style={{ color: "#6b7280", marginLeft: 6 }}>
+                        ({formatDocumentSource(d.source)}
+                        {d.confidence ? `, confidence: ${d.confidence}` : ""})
+                      </span>
+                    )}
                   </div>
                 ))}
               </>
